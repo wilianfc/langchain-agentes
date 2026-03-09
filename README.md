@@ -1,5 +1,14 @@
 # Agente com LangGraph: Do Básico ao MCP
 
+> ⚡ **Produção**: Use a arquitetura assíncrona para APIs. O handler síncrono em `aws_pipeline_clientes.py` está limitado a 30s pelo API Gateway.
+> 
+> **Fluxo recomendado:**
+> - `lambda_controller.py` → retorna `request_id` imediatamente (< 1s)
+> - `lambda_worker.py` → processa em background via SQS (até 15min)
+> - `lambda_status.py` → cliente consulta status e resultado
+> 
+> 📖 [Guia completo de migração assíncrona](MIGRATION_ASYNC.md)
+
 Notebook didático cobrindo os principais conceitos de construção de agentes inteligentes com LangChain e LangGraph, do básico ao uso de MCP (Model Context Protocol) para integração com bancos de dados.
 
 ## Pré-requisitos

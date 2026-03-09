@@ -1409,6 +1409,18 @@ def _get_pipeline() -> PipelineInference:
 
 def lambda_handler(event: Dict, context: Any) -> Dict:
     """
+    ⚠️ LEGADO / DEPRECATED ⚠️
+    
+    Este handler SÍNCRONO está limitado a 30s pelo API Gateway e não deve ser
+    usado em produção para agentes que podem demorar minutos.
+    
+    Use o fluxo ASSÍNCRONO:
+      - lambda_controller.py (retorna request_id imediatamente, < 1s)
+      - lambda_worker.py     (processa em background via SQS, até 15min)
+      - lambda_status.py     (consulta status e resultado via request_id)
+    
+    Documentação: ver MIGRATION_ASYNC.md
+    
     Entry point AWS Lambda.
 
     Entrada — modo segmento (padrão):
