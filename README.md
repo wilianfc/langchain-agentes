@@ -151,6 +151,8 @@ retriever.as_retriever()        ← interface de recuperação
 @tool buscar_conhecimento()     ← expõe o retriever como ferramenta do agente
 ```
 
+> **Em produção (AWS):** o FAISS local é substituído por **OpenSearch Serverless** e os embeddings HuggingFace por **Bedrock Titan Embeddings v2**. Ver [Parte 8 — RAG em produção](#parte-8--arquitetura-assíncrona-de-produção-aws).
+
 #### Import correto do text splitter
 
 ```python
@@ -818,6 +820,122 @@ INSERT INTO segmentos_clientes VALUES
 
 ---
 
+---
+
+## Parte 8 — Arquitetura Assíncrona de Produção (AWS)
+
+### Por que arquitetura assíncrona?
+
+O API Gateway tem timeout de **29 s**. Agentes com RAG + LLM + clustering levam **minutos**. A solução é retornar `request_id` imediatamente (< 1 s) e processar em background via SQS.
+
+### Fluxo de requisição (async)
+
+```
+Cliente
+  │ POST /query
+  ▼
+API Gateway ──► Lambda Controller (< 1s)
+                      │  ├─► DynamoDB (status=PENDING)
+                      │  └─► SQS Queue
+                      │
+                202 Accepted + request_id
+                      │
+SQS ──────────► Lambda Worker (até 15min)
+                      │  ├─► OpenSearch  (busca semântica — RAG)
+                      │  ├─► Bedrock Titan Embeddings v2 (embedding da query)
+                      │  ├─► Bedrock Claude (geração da resposta)
+                      │  ├─► DynamoDB (status=COMPLETED + resposta)
+                      │  └─► SNS (notificação opcional)
+                      │
+Cliente
+  │ GET /status/{request_id} (polling exponencial)
+  ▼
+API Gateway ──► Lambda Status ──► DynamoDB ──► resposta
+```
+
+### Pipeline de Ingestão RAG (offline / event-driven)
+
+O RAG em produção exige um pipeline separado para preparar os documentos **antes** das consultas:
+
+```
+S3 (upload de documento)
+  │  S3 Event PutObject
+  ▼
+Lambda Ingestão
+  ├─► RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200)
+  ├─► Bedrock Titan Embeddings v2    (vetorização, 1536 dims)
+  └─► OpenSearch Serverless          (indexa chunks + vetores, k-NN HNSW)
+```
+
+| Componente | Papel | Detalhe |
+|---|---|---|
+| **S3** | Armazena documentos brutos | PDF / TXT / JSON |
+| **Lambda Ingestão** | Chunking + embedding + indexação | Triggered por S3 Event |
+| **Bedrock Titan Embeddings v2** | Modelo de embeddings gerenciado | `amazon.titan-embed-text-v2:0`, 1536 dims |
+| **OpenSearch Serverless** | Vector Store com k-NN (HNSW) | Index `documentos-rag` |
+| **Bedrock Claude** | LLM para geração da resposta | `claude-sonnet-4-6` |
+| **DynamoDB** | Armazena status e resultado por `request_id` | TTL 7 dias |
+| **SQS + DLQ** | Fila com reprocessamento automático | Visibilidade 15min |
+
+### Diferença local vs. produção
+
+| Aspecto | Desenvolvimento (Partes 2–7) | Produção AWS (Parte 8) |
+|---|---|---|
+| Vector Store | FAISS in-memory | OpenSearch Serverless |
+| Embeddings | HuggingFace `all-MiniLM-L6-v2` (CPU) | Bedrock Titan Embeddings v2 (API) |
+| Chunking/indexação | Manual no notebook | Lambda Ingestão (event-driven) |
+| LLM | `ChatAnthropic` direto | `ChatBedrock` via Bedrock |
+| Persistência | Reinicia a cada sessão | Permanente |
+
+### Instalação (dependências AWS)
+
+```bash
+pip install langchain-aws opensearch-py requests-aws4auth
+```
+
+### Variáveis de ambiente
+
+```bash
+# Lambda Worker + Lambda Status + Lambda Controller
+SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/...
+DYNAMODB_TABLE=requests
+SNS_TOPIC_ARN=arn:aws:sns:...          # opcional
+ANTHROPIC_SECRET_NAME=anthropic-key   # via Secrets Manager
+
+# Lambda Worker + Lambda Ingestão (RAG)
+OPENSEARCH_ENDPOINT=https://....us-east-1.aoss.amazonaws.com
+OPENSEARCH_INDEX=documentos-rag
+OPENSEARCH_PASSWORD=...
+S3_BUCKET=meu-bucket-docs-rag
+```
+
+### Infra como código
+
+```bash
+cd terraform/
+terraform validate   # valida sintaxe
+terraform plan       # visualiza mudanças
+terraform apply      # provisiona infraestrutura
+```
+
+### Endpoints
+
+```bash
+# Iniciar processamento
+curl -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/query \
+  -H "Content-Type: application/json" \
+  -d '{"cliente_id":"C001","dados_cliente":{...},"pergunta":"...","modo":"segmento"}'
+# → { "request_id": "req_abc123", "status": "PENDING" }
+
+# Consultar status (polling)
+curl https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/status/req_abc123
+# → { "status": "COMPLETED", "resposta": "..." }
+
+# Upload de documento para RAG (trigger automático)
+aws s3 cp meu_documento.pdf s3://meu-bucket-docs-rag/
+# → S3 Event aciona Lambda Ingestão automaticamente
+```
+
 ## Referências
 
 - [LangGraph Docs](https://langchain-ai.github.io/langgraph/)
@@ -827,3 +945,7 @@ INSERT INTO segmentos_clientes VALUES
 - [DeepEval Docs](https://docs.confident-ai.com/)
 - [FAISS](https://github.com/facebookresearch/faiss)
 - [Sentence Transformers](https://www.sbert.net/)
+- [Amazon Bedrock Docs](https://docs.aws.amazon.com/bedrock/)
+- [LangChain AWS Integration](https://python.langchain.com/docs/integrations/providers/aws/)
+- [OpenSearch k-NN](https://opensearch.org/docs/latest/search-plugins/knn/)
+- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
