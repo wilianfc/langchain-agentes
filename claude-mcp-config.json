@@ -1,0 +1,34 @@
+{
+  "_comment": "Configuração MemPalace para Claude Desktop - Copie para ~/.claude/claude_desktop_config.json",
+  "mcpServers": {
+    "mempalace": {
+      "command": "python",
+      "args": ["-m", "mempalace.mcp_server"],
+      "env": {
+        "PALACE_PATH": "C:/Users/%USERNAME%/.mempalace/vscode_decisions"
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INSTRUÇÕES DE SETUP PARA CLAUDE MCP:
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 1. Instale o MemPalace:
+//    pip install mempalace
+//
+// 2. Localize o arquivo de configuração do Claude:
+//    Unix/Mac: ~/.claude/claude_desktop_config.json
+//    Windows:  %APPDATA%\Claude\claude_desktop_config.json
+//
+// 3. Adicione ou edite o arquivo com o conteúdo JSON acima (sem os comentários)
+//
+// 4. Reinicie o Claude Desktop
+//
+// 5. Teste no Claude usando comandos como:
+//    "Salve esta decisão: Escolhemos LangGraph para agentes"
+//    "Busque decisões sobre 'database'"
+//    "Carregue o contexto essencial do projeto"
+//
+// ═══════════════════════════════════════════════════════════════════════════

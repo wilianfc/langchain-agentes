@@ -23,3 +23,27 @@ credentials
 # OS
 .DS_Store
 Thumbs.db
+
+# Backups de editores
+*.bkp
+.$*.bkp
+
+# DeepEval (cache de testes locais)
+.deepeval/
+
+# PKL gerado localmente
+modelo_clustering_slim.pkl
+
+# Terraform — estado e build artifacts
+infraestrutura/.terraform/
+infraestrutura/.terraform.lock.hcl
+infraestrutura/*.tfstate
+infraestrutura/*.tfstate.backup
+infraestrutura/*.tfplan
+infraestrutura/modules/lambda_layer/layer_content/
+infraestrutura/modules/lambda_layer/python/
+infraestrutura/modules/lambda_layer/dist/
+infraestrutura/modules/lambda/dist/
+
+# tfvars com chaves sensíveis (commitar apenas o base sem segredos)
+infraestrutura/secrets.auto.tfvars

@@ -1,0 +1,320 @@
+"""
+Worker Lambda — Pipeline RAG completo com OTel/Langfuse.
+
+Modos:
+  segmento — gerente fala sobre o cliente em 3ª pessoa (RAG: cluster index)
+  persona  — arquétipo nomeado do cluster em 1ª pessoa (RAG: cluster index)
+  twin     — digital twin do cliente em 1ª pessoa     (RAG: clientes-digital-twins)
+
+Cold start: carrega slim PKL do S3 (numpy only, sem sklearn).
+Warm start: reutiliza modelo em memória.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import pickle
+import traceback
+from datetime import datetime, timezone
+from io import BytesIO
+from typing import Any, Dict, List, Optional
+
+import boto3
+import numpy as np
+from botocore.config import Config
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
+
+import otel_config  # inicializa OTel + openlit antes de qualquer chamada Anthropic
+otel_config.init()
+
+import anthropic  # noqa: E402 — após otel_config para capturar instrumentação
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ── Clientes AWS ───────────────────────────────────────────────────────────────
+_config = Config(connect_timeout=5, read_timeout=30)
+_dynamodb = boto3.resource("dynamodb", config=_config)
+_sns = boto3.client("sns", config=_config)
+_secrets = boto3.client("secretsmanager", config=_config)
+_s3 = boto3.client("s3", config=_config)
+
+# ── Variáveis de ambiente ──────────────────────────────────────────────────────
+TABLE_NAME = os.environ["DYNAMODB_TABLE"]
+SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
+ANTHROPIC_SECRET_ARN = os.environ["ANTHROPIC_SECRET_ARN"]
+S3_BUCKET = os.environ.get("S3_BUCKET", "")
+S3_PREFIX = os.environ.get("S3_PREFIX", "clientes-agente/")
+OPENSEARCH_ENDPOINT = os.environ.get("OPENSEARCH_ENDPOINT", "")
+AWS_REGION = os.environ.get("AWS_REGION", "sa-east-1")
+AWS_ACCOUNT_ID = os.environ.get("AWS_ACCOUNT_ID", "")
+
+FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
+
+# ── Estado de cold start ───────────────────────────────────────────────────────
+_anthropic_client: Optional[anthropic.Anthropic] = None
+_model_data: Optional[Dict[str, Any]] = None  # slim PKL carregado do S3
+
+
+
+def _get_anthropic() -> anthropic.Anthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
+        key = _secrets.get_secret_value(SecretId=ANTHROPIC_SECRET_ARN)["SecretString"]
+        _anthropic_client = anthropic.Anthropic(api_key=key)
+    return _anthropic_client
+
+
+def _get_model() -> Dict[str, Any]:
+    """Carrega slim PKL do S3 no cold start."""
+    global _model_data
+    if _model_data is not None:
+        return _model_data
+
+    if not S3_BUCKET:
+        raise RuntimeError("S3_BUCKET não definido — não é possível carregar o modelo.")
+
+    key = f"{S3_PREFIX}modelo_clustering_slim.pkl"
+    log.info("Cold start: carregando modelo de s3://%s/%s", S3_BUCKET, key)
+    extra = {"ExpectedBucketOwner": AWS_ACCOUNT_ID} if AWS_ACCOUNT_ID else {}
+    obj = _s3.get_object(Bucket=S3_BUCKET, Key=key, **extra)
+    _model_data = pickle.loads(obj["Body"].read())
+    log.info("Modelo carregado: %d clusters.", _model_data["n_clusters"])
+    return _model_data
+
+
+
+def _classificar(dados: Dict[str, float]) -> int:
+    m = _get_model()
+    features = m["features"]
+    X = np.array([[dados[f] for f in features]], dtype=float)
+    X = (X - m["scale_mean"]) / m["scale_std"]
+    dist = np.linalg.norm(X - m["centroids"], axis=1)
+    return int(np.argmin(dist))
+
+
+
+def _os_client() -> OpenSearch:
+    boto_session = boto3.session.Session()
+    creds = boto_session.get_credentials().get_frozen_credentials()
+    auth = AWS4Auth(creds.access_key, creds.secret_key, AWS_REGION, "es",
+                    session_token=creds.token)
+    return OpenSearch(
+        hosts=[{"host": OPENSEARCH_ENDPOINT, "port": 443}],
+        http_auth=auth,
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection,
+    )
+
+
+def _rag_segmento(cluster_id: int, query: str, k: int = 3) -> str:
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index=f"clientes-segmento-{cluster_id}",
+            body={"query": {"match": {"text": query}}, "size": k},
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de segmento (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
+def _rag_twin(cliente_id: str, query: str, k: int = 3) -> str:
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index="clientes-digital-twins",
+            body={
+                "query": {
+                    "bool": {
+                        "must": {"match": {"text": query}},
+                        "filter": {"term": {"metadata.cliente_id": cliente_id}},
+                    }
+                },
+                "size": k,
+            },
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de twin (cliente %s): %s", cliente_id, traceback.format_exc())
+        return ""
+
+
+def _extrair_texto(resp: Dict) -> str:
+    hits = resp.get("hits", {}).get("hits", [])
+    textos = [h.get("_source", {}).get("text", "") for h in hits]
+    return "\n\n".join(t for t in textos if t)
+
+
+
+def _perfil(cluster_id: int) -> Dict[str, Any]:
+    return _get_model()["perfis"].get(cluster_id, {})
+
+
+def _system_segmento(cluster_id: int) -> str:
+    p = _perfil(cluster_id)
+    seg = p.get("segmento", f"Cluster {cluster_id}")
+    prompt = p.get("prompt_segmento", "")
+    if not prompt:
+        prompt = (
+            f"Você é um gerente de relacionamento do banco responsável pelo segmento '{seg}'. "
+            "Analise os dados do cliente e responda com precisão e clareza em 3ª pessoa."
+        )
+    return prompt
+
+
+def _system_persona(cluster_id: int) -> str:
+    p = _perfil(cluster_id)
+    seg = p.get("segmento", f"Cluster {cluster_id}")
+    nome = p.get("persona_nome", f"Cliente do Cluster {cluster_id}")
+    ocupacao = p.get("persona_ocupacao", "profissional")
+    canal = p.get("persona_canal", "uso os canais do banco")
+    contexto = p.get("persona_contexto", "")
+    return (
+        f"Você é {nome}, {ocupacao}. Você representa o cliente típico do segmento '{seg}'. "
+        f"Canal preferencial: {canal}. {contexto} "
+        "Responda SEMPRE em 1ª pessoa, como este arquétipo. Não quebre o personagem."
+    )
+
+
+def _system_twin(cliente_id: str, dados: Dict) -> str:
+    renda = float(dados.get("renda_mensal", 0))
+    score = float(dados.get("score_credito", 0))
+    idade = float(dados.get("idade", 30))
+    canal = "digital (app/internet banking)" if dados.get("canal_digital") else "agência presencial"
+    inadimplente = dados.get("inadimplente", dados.get("inadimplencia", 0))
+    historico = "em reestruturação financeira após inadimplência" if inadimplente else "adimplente"
+    return (
+        f"Você é o gêmeo digital do cliente {cliente_id}. "
+        f"Simule EXATAMENTE como este cliente pensaria e reagiria:\n"
+        f"  Idade: {idade:.0f} anos | Renda: R$ {renda:,.0f}/mês | "
+        f"Score: {score:.0f} | Canal: {canal} | Situação: {historico}\n\n"
+        "REGRAS: responda em 1ª pessoa ('Eu prefiro...', 'Para mim...'). "
+        "Seja coerente com este perfil. Não quebre o personagem."
+    )
+
+
+def _chamar_claude(system: str, contexto_rag: str, pergunta: str) -> str:
+    conteudo = pergunta
+    if contexto_rag:
+        conteudo = f"Contexto relevante:\n{contexto_rag}\n\nPergunta: {pergunta}"
+
+    msg = _get_anthropic().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        system=system,
+        messages=[{"role": "user", "content": conteudo}],
+    )
+    return msg.content[0].text
+
+
+
+def _executar(payload: Dict) -> str:
+    pergunta: str = payload["pergunta"]
+    modo: str = payload.get("modo", "segmento")
+    dados: Dict = payload.get("dados_cliente", payload.get("dados", {}))
+    cliente_id: str = payload.get("cliente_id", "")
+
+    if modo == "twin":
+        contexto = _rag_twin(cliente_id, pergunta)
+        system = _system_twin(cliente_id, dados)
+        resultado = _chamar_claude(system, contexto, pergunta)
+        return json.dumps({
+            "cliente_id": cliente_id,
+            "modo": "twin",
+            "resposta": resultado,
+        }, ensure_ascii=False)
+
+    if modo == "persona":
+        cluster_id = payload.get("cluster_id")
+        if cluster_id is None:
+            if not dados:
+                raise ValueError("Modo 'persona' requer 'cluster_id' ou 'dados_cliente'.")
+            cluster_id = _classificar(dados)
+        cluster_id = int(cluster_id)
+        contexto = _rag_segmento(cluster_id, pergunta)
+        system = _system_persona(cluster_id)
+        resultado = _chamar_claude(system, contexto, pergunta)
+        p = _perfil(cluster_id)
+        return json.dumps({
+            "cluster_id": cluster_id,
+            "segmento": p.get("segmento", ""),
+            "persona_nome": p.get("persona_nome", ""),
+            "modo": "persona",
+            "resposta": resultado,
+        }, ensure_ascii=False)
+
+    # modo segmento (default)
+    ausentes = set(FEATURES) - set(dados.keys())
+    if ausentes:
+        raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
+    cluster_id = _classificar(dados)
+    contexto = _rag_segmento(cluster_id, pergunta)
+    system = _system_segmento(cluster_id)
+    resultado = _chamar_claude(system, contexto, pergunta)
+    p = _perfil(cluster_id)
+    return json.dumps({
+        "cliente_id": cliente_id,
+        "cluster_id": cluster_id,
+        "segmento": p.get("segmento", ""),
+        "modo": "segmento",
+        "resposta": resultado,
+    }, ensure_ascii=False)
+
+
+
+def _atualizar_status(request_id: str, status: str, resultado: str = None, erro: str = None):
+    agora = datetime.now(timezone.utc).isoformat()
+    expr = "SET #s = :s, atualizado_em = :a"
+    attrs = {":s": status, ":a": agora}
+    names = {"#s": "status"}
+    if resultado is not None:
+        expr += ", resultado = :r"
+        attrs[":r"] = resultado
+    if erro is not None:
+        expr += ", erro = :e"
+        attrs[":e"] = erro
+
+    _dynamodb.Table(TABLE_NAME).update_item(
+        Key={"request_id": request_id},
+        UpdateExpression=expr,
+        ExpressionAttributeValues=attrs,
+        ExpressionAttributeNames=names,
+    )
+
+
+def _notificar(request_id: str, status: str):
+    if not SNS_TOPIC_ARN:
+        return
+    _sns.publish(
+        TopicArn=SNS_TOPIC_ARN,
+        Subject=f"Agente LangChain: {status}",
+        Message=json.dumps({"request_id": request_id, "status": status}),
+    )
+
+
+
+def lambda_handler(event, context):
+    for record in event["Records"]:
+        payload = json.loads(record["body"])
+        request_id = payload["request_id"]
+
+        _atualizar_status(request_id, "PROCESSING")
+        try:
+            resultado = _executar(payload)
+            _atualizar_status(request_id, "COMPLETED", resultado=resultado)
+            _notificar(request_id, "COMPLETED")
+        except Exception:
+            erro = traceback.format_exc()
+            log.error("Erro ao processar request %s:\n%s", request_id, erro)
+            _atualizar_status(request_id, "FAILED", erro=erro)
+            _notificar(request_id, "FAILED")
+            raise

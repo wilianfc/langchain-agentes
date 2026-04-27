@@ -1,0 +1,124 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MemPalace: Salvar Decisão de Projeto",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m", "mempalace", "add-drawer",
+        "--wing", "langchain_project",
+        "--room", "decisoes_tecnicas",
+        "--content", "${input:decision_content}",
+        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MemPalace: Buscar Decisões Anteriores",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m", "mempalace", "search",
+        "${input:search_query}",
+        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MemPalace: Carregar Contexto do Projeto",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m", "mempalace", "wake-up",
+        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MemPalace: Salvar Problema Resolvido",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m", "mempalace", "add-drawer",
+        "--wing", "langchain_project",
+        "--room", "problemas_resolvidos",
+        "--content", "${input:problem_solution}",
+        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MemPalace: Inicializar Palace",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-c",
+        "import os; from pathlib import Path; palace_dir = Path.home() / '.mempalace' / 'vscode_decisions'; palace_dir.mkdir(parents=True, exist_ok=True); print(f'✅ MemPalace inicializado em: {palace_dir}')"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "decision_content",
+      "type": "promptString",
+      "description": "Descreva a decisão técnica tomada (ex: 'Escolhemos LangGraph por suporte a ciclos ReAct')"
+    },
+    {
+      "id": "search_query",
+      "type": "promptString",
+      "description": "Buscar decisões sobre (ex: 'autenticação', 'database', 'deployment')"
+    },
+    {
+      "id": "problem_solution",
+      "type": "promptString",
+      "description": "Descreva o problema e solução encontrada"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "key": "ctrl+alt+d",
+    "command": "workbench.action.tasks.runTask",
+    "args": "MemPalace: Salvar Decisão de Projeto",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "ctrl+alt+s",
+    "command": "workbench.action.tasks.runTask",
+    "args": "MemPalace: Buscar Decisões Anteriores",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "ctrl+alt+c",
+    "command": "workbench.action.tasks.runTask",
+    "args": "MemPalace: Carregar Contexto do Projeto",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "ctrl+alt+p",
+    "command": "workbench.action.tasks.runTask",
+    "args": "MemPalace: Salvar Problema Resolvido",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "ctrl+alt+i",
+    "command": "workbench.action.tasks.runTask",
+    "args": "MemPalace: Inicializar Palace",
+    "when": "!terminalFocus"
+  }
+]

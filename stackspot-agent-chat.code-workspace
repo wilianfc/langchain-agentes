@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "../../Users/wilia.DESKTOP-1O14NGD/stackspot-chat-angular-v2/stackspot-agent-chat"
+		},
+		{
+			"path": "../Personas"
+		},
+		{
+			"path": "../../Users/wilia.DESKTOP-1O14NGD/itau-agent-eval"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"powershell.cwd": "itau-agent-eval"
+	}
+}

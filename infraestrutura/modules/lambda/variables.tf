@@ -1,0 +1,80 @@
+variable "project_name" {
+  description = "Nome do projeto"
+  type        = string
+}
+
+variable "environment" {
+  description = "Ambiente (dev/prod)"
+  type        = string
+}
+
+variable "controller_role_arn" {
+  description = "ARN da role do Lambda Controller"
+  type        = string
+}
+
+variable "worker_role_arn" {
+  description = "ARN da role do Lambda Worker"
+  type        = string
+}
+
+variable "status_role_arn" {
+  description = "ARN da role do Lambda Status"
+  type        = string
+}
+
+variable "sqs_queue_url" {
+  description = "URL da fila SQS"
+  type        = string
+}
+
+variable "sqs_queue_arn" {
+  description = "ARN da fila SQS"
+  type        = string
+}
+
+variable "dynamodb_table_name" {
+  description = "Nome da tabela DynamoDB"
+  type        = string
+}
+
+variable "sns_topic_arn" {
+  description = "ARN do tópico SNS"
+  type        = string
+}
+
+variable "opensearch_endpoint" {
+  description = "Endpoint do domínio OpenSearch (sem https://)"
+  type        = string
+  default     = ""
+}
+
+variable "s3_bucket_name" {
+  description = "Nome do bucket S3 de artefatos"
+  type        = string
+  default     = ""
+}
+
+variable "layer_arn" {
+  description = "ARN da Lambda Layer com dependências Python"
+  type        = string
+}
+
+variable "anthropic_secret_arn" {
+  description = "ARN do secret da Anthropic no Secrets Manager"
+  type        = string
+}
+
+variable "langfuse_public_key" {
+  description = "Chave pública Langfuse para OTel (opcional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "langfuse_secret_key" {
+  description = "Chave secreta Langfuse para OTel (opcional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -1,0 +1,5 @@
+wing: decisoes_projeto
+rooms:
+- name: general
+  description: All project files
+  keywords: []
