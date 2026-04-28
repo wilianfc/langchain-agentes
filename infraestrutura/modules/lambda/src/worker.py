@@ -169,7 +169,8 @@ def _system_segmento(cluster_id: int) -> str:
     if not prompt:
         prompt = (
             f"Você é um gerente de relacionamento do banco responsável pelo segmento '{seg}'. "
-            "Analise os dados do cliente e responda com precisão e clareza em 3ª pessoa."
+            "Analise os dados do cliente e responda com precisão e clareza em 3ª pessoa. "
+            "Seja objetivo, use dados concretos e termine com uma recomendação de ação."
         )
     return prompt
 
@@ -182,9 +183,11 @@ def _system_persona(cluster_id: int) -> str:
     canal = p.get("persona_canal", "uso os canais do banco")
     contexto = p.get("persona_contexto", "")
     return (
-        f"Você é {nome}, {ocupacao}. Você representa o cliente típico do segmento '{seg}'. "
+        f"Você é {nome}, {ocupacao}. Representa o cliente típico do segmento '{seg}'. "
         f"Canal preferencial: {canal}. {contexto} "
-        "Responda SEMPRE em 1ª pessoa, como este arquétipo. Não quebre o personagem."
+        "REGRAS ABSOLUTAS: (1) Responda SEMPRE em 1ª pessoa. "
+        "(2) Seja autêntico ao perfil — use linguagem, prioridades e preocupações coerentes. "
+        "(3) Nunca quebre o personagem nem mencione que é uma IA."
     )
 
 
@@ -197,24 +200,145 @@ def _system_twin(cliente_id: str, dados: Dict) -> str:
     historico = "em reestruturação financeira após inadimplência" if inadimplente else "adimplente"
     return (
         f"Você é o gêmeo digital do cliente {cliente_id}. "
-        f"Simule EXATAMENTE como este cliente pensaria e reagiria:\n"
+        f"Simule EXATAMENTE como este cliente específico pensaria e reagiria:\n"
         f"  Idade: {idade:.0f} anos | Renda: R$ {renda:,.0f}/mês | "
         f"Score: {score:.0f} | Canal: {canal} | Situação: {historico}\n\n"
-        "REGRAS: responda em 1ª pessoa ('Eu prefiro...', 'Para mim...'). "
-        "Seja coerente com este perfil. Não quebre o personagem."
+        "REGRAS ABSOLUTAS: (1) Responda em 1ª pessoa ('Eu prefiro...', 'Para mim...'). "
+        "(2) Suas opiniões devem refletir fielmente renda, score e histórico acima. "
+        "(3) Não quebre o personagem. (4) Não mencione que é uma simulação."
     )
 
 
-def _chamar_claude(system: str, contexto_rag: str, pergunta: str) -> str:
+# ── Few-shot examples por modo ────────────────────────────────────────────────
+
+_FEWSHOT_SEGMENTO: List[Dict] = [
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nPerfil 'Jovem Digital': 312 clientes, idade média 27 anos, "
+            "renda R$ 2.800/mês, score 640, inadimplência 8,2%, uso digital 94%.\n\n"
+            "Pergunta: Que produto de crédito faz mais sentido para este cliente?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Com base no perfil Jovem Digital, o produto mais adequado é o **cartão de crédito com cashback "
+            "de 2% sem anuidade**. Justificativa: score 640 permite aprovação sem garantias; uso digital de "
+            "94% indica preferência por gestão via app; renda de R$ 2.800 comporta limite inicial de R$ 2.000 "
+            "sem risco de superendividamento. Evitar crédito pessoal neste momento — inadimplência de 8,2% "
+            "sinaliza fragilidade de caixa. **Ação recomendada:** oferta proativa via push notification no app "
+            "com aprovação instantânea e limite pré-aprovado."
+        ),
+    },
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nPerfil 'Premium Conservador': 87 clientes, idade média 54 anos, "
+            "renda R$ 19.000/mês, saldo R$ 142.000, score 835, inadimplência 0,3%, uso digital 41%.\n\n"
+            "Pergunta: Como abordar este cliente sobre previdência privada?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "O cliente Premium Conservador é o perfil ideal para PGBL. Abordagem recomendada: destacar o "
+            "**benefício fiscal imediato** — com renda de R$ 19.000/mês, a dedução de até 12% da renda bruta "
+            "representa economia de até R$ 27.360/ano no IR (tabela progressiva). Saldo de R$ 142.000 indica "
+            "patrimônio consolidado que busca proteção real. Score 835 e inadimplência 0,3% confirmam "
+            "disciplina financeira. **Ação recomendada:** agendar reunião presencial com gerente dedicado "
+            "— uso digital de 41% indica preferência por atendimento exclusivo e personalizado."
+        ),
+    },
+]
+
+_FEWSHOT_PERSONA: List[Dict] = [
+    {
+        "role": "user",
+        "content": "O banco está oferecendo um empréstimo pessoal com taxa de 2,9% ao mês. Você toparia?",
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Depende muito do que eu preciso fazer com esse dinheiro. 2,9% ao mês parece pouco, mas no ano "
+            "dá quase 42% — isso é caro. Antes de assinar qualquer coisa eu calcularia o custo total, "
+            "não só a parcela. Se for para uma emergência real, eu pesaria. Para compra de desejo? "
+            "Provavelmente esperaria juntar o dinheiro primeiro."
+        ),
+    },
+    {
+        "role": "user",
+        "content": "Como você se sente quando recebe uma oferta de produto financeiro por telefone?",
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Honestamente? Fico desconfiado. Prefiro muito mais ver as condições por escrito, no app ou no site, "
+            "do meu jeito e no meu tempo. Quando alguém liga tentando me convencer na hora, parece que estão "
+            "escondendo alguma coisa nas letras miúdas. Se o produto for bom, ele vai continuar bom amanhã "
+            "também — não preciso decidir em 3 minutos de chamada."
+        ),
+    },
+]
+
+_FEWSHOT_TWIN: List[Dict] = [
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nCliente adimplente, score 620, renda R$ 4.500, prefere agência.\n\n"
+            "Pergunta: Você investiria em Tesouro Direto?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Já ouvi falar do Tesouro Direto, mas confesso que nunca mexi nisso. Com R$ 4.500 de renda, "
+            "depois de pagar as contas fixas sobra pouco — uns R$ 400 por mês, quando sobra. Ficaria "
+            "mais tranquilo conversando pessoalmente com alguém do banco antes de colocar dinheiro em "
+            "qualquer investimento. O que me preocupa é: e se eu precisar do dinheiro antes do prazo?"
+        ),
+    },
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nCliente inadimplente, score 420, renda variável R$ 2.100.\n\n"
+            "Pergunta: O que você acha do programa de renegociação com 80% de desconto nos juros?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Isso seria uma saída que eu precisava. 80% de desconto nos juros? Eu toparia na hora — "
+            "o que me paralisa é justamente os juros que só crescem. Com R$ 2.100 de renda, se a "
+            "parcela ficar em algo que eu consiga pagar todo mês sem apertar demais, eu assino. "
+            "O que eu quero é sair dessa situação e recuperar meu nome. Tem como parcelar em bastantes vezes?"
+        ),
+    },
+]
+
+
+def _fewshot(modo: str) -> List[Dict]:
+    if modo == "segmento":
+        return _FEWSHOT_SEGMENTO
+    if modo == "persona":
+        return _FEWSHOT_PERSONA
+    if modo == "twin":
+        return _FEWSHOT_TWIN
+    return []
+
+
+def _chamar_claude(system: str, contexto_rag: str, pergunta: str, modo: str = "segmento") -> str:
     conteudo = pergunta
     if contexto_rag:
         conteudo = f"Contexto relevante:\n{contexto_rag}\n\nPergunta: {pergunta}"
+
+    messages = _fewshot(modo) + [{"role": "user", "content": conteudo}]
 
     msg = _get_anthropic().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=system,
-        messages=[{"role": "user", "content": conteudo}],
+        messages=messages,
     )
     return msg.content[0].text
 
@@ -229,7 +353,7 @@ def _executar(payload: Dict) -> str:
     if modo == "twin":
         contexto = _rag_twin(cliente_id, pergunta)
         system = _system_twin(cliente_id, dados)
-        resultado = _chamar_claude(system, contexto, pergunta)
+        resultado = _chamar_claude(system, contexto, pergunta, modo="twin")
         return json.dumps({
             "cliente_id": cliente_id,
             "modo": "twin",
@@ -245,7 +369,7 @@ def _executar(payload: Dict) -> str:
         cluster_id = int(cluster_id)
         contexto = _rag_segmento(cluster_id, pergunta)
         system = _system_persona(cluster_id)
-        resultado = _chamar_claude(system, contexto, pergunta)
+        resultado = _chamar_claude(system, contexto, pergunta, modo="persona")
         p = _perfil(cluster_id)
         return json.dumps({
             "cluster_id": cluster_id,
@@ -262,7 +386,7 @@ def _executar(payload: Dict) -> str:
     cluster_id = _classificar(dados)
     contexto = _rag_segmento(cluster_id, pergunta)
     system = _system_segmento(cluster_id)
-    resultado = _chamar_claude(system, contexto, pergunta)
+    resultado = _chamar_claude(system, contexto, pergunta, modo="segmento")
     p = _perfil(cluster_id)
     return json.dumps({
         "cliente_id": cliente_id,
