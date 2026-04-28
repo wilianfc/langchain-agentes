@@ -23,6 +23,12 @@ variable "anthropic_api_key" {
   default     = ""
 }
 
+variable "opensearch_extra_arns" {
+  description = "ARNs IAM extras com acesso ao OpenSearch (ex: usuário local de desenvolvimento)"
+  type        = list(string)
+  default     = []
+}
+
 variable "langfuse_public_key" {
   description = "Chave pública do Langfuse (pk-lf-...) — opcional; OTel desabilitado se vazio"
   type        = string

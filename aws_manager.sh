@@ -75,15 +75,11 @@ check_prereqs() {
         success "AWS autenticado: conta $AWS_ACCOUNT / região $AWS_REGION"
     fi
 
-    if [[ ! -f "$TF_DIR/secrets.auto.tfvars" ]]; then
-        error "Arquivo '$TF_DIR/secrets.auto.tfvars' não encontrado."
-        echo "  Crie com o conteúdo:"
-        echo '  anthropic_api_key = "sk-ant-..."'
-        echo '  # langfuse_public_key = "pk-lf-..."   # opcional'
-        echo '  # langfuse_secret_key = "sk-lf-..."   # opcional'
-        ok=false
-    else
+    if [[ -f "$TF_DIR/secrets.auto.tfvars" ]]; then
         success "secrets.auto.tfvars encontrado"
+    else
+        # anthropic_api_key tem default "" desde a migração para Bedrock — não é obrigatório
+        info "secrets.auto.tfvars não encontrado (ok — inferência via Amazon Bedrock + IAM)"
     fi
 
     [[ "$ok" == true ]]

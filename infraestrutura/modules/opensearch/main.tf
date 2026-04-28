@@ -35,19 +35,16 @@ resource "aws_opensearch_domain" "main" {
     internal_user_database_enabled = false
   }
 
-  # Política de acesso: Lambda worker role + usuário corrente (dev)
+  # Política de acesso: Lambda worker role + replicator role + usuários de dev
   access_policies = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect    = "Allow"
-        Principal = { AWS = var.worker_role_arn }
-        Action    = "es:*"
-        Resource  = "arn:aws:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.project_name}-${var.environment}/*"
-      },
-      {
-        Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Principal = { AWS = concat(
+          [var.worker_role_arn],
+          var.extra_principal_arns
+        )}
         Action    = "es:*"
         Resource  = "arn:aws:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.project_name}-${var.environment}/*"
       }

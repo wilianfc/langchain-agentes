@@ -69,7 +69,7 @@ variable "neptune_endpoint" {
 variable "bedrock_model_id" {
   description = "Model ID do Amazon Bedrock para inferência Claude"
   type        = string
-  default     = "us.anthropic.claude-sonnet-4-5-20250514-v1:0"
+  default     = "us.anthropic.claude-sonnet-4-6"
 }
 
 variable "bedrock_region" {

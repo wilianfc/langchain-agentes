@@ -55,10 +55,11 @@ module "iam" {
 }
 
 module "opensearch" {
-  source          = "./modules/opensearch"
-  project_name    = var.project_name
-  environment     = var.environment
-  worker_role_arn = module.iam.lambda_worker_role_arn
+  source               = "./modules/opensearch"
+  project_name         = var.project_name
+  environment          = var.environment
+  worker_role_arn      = module.iam.lambda_worker_role_arn
+  extra_principal_arns = var.opensearch_extra_arns
 }
 
 module "neptune" {
