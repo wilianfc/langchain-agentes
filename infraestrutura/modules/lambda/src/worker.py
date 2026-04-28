@@ -48,6 +48,7 @@ AWS_REGION = os.environ.get("AWS_REGION", "sa-east-1")
 AWS_ACCOUNT_ID = os.environ.get("AWS_ACCOUNT_ID", "")
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
+NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "")
 
 FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
 
@@ -148,6 +149,87 @@ def _extrair_texto(resp: Dict) -> str:
     textos = [h.get("_source", {}).get("text", "") for h in hits]
     return "\n\n".join(t for t in textos if t)
 
+
+
+def _neptune_client():
+    """Retorna cliente HTTP simples para consultas Gremlin/OpenCypher via HTTPS."""
+    import urllib.request
+    import urllib.parse
+
+    class _NeptuneClient:
+        def __init__(self, endpoint: str):
+            self._base = f"https://{endpoint}:8182"
+
+        def query(self, cypher: str) -> List[Dict]:
+            data = urllib.parse.urlencode({"query": cypher}).encode()
+            req = urllib.request.Request(
+                f"{self._base}/openCypher",
+                data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                import json as _json
+                return _json.loads(r.read()).get("results", [])
+
+    return _NeptuneClient(NEPTUNE_ENDPOINT)
+
+
+def _rag_graph(cluster_id: int, cliente_id: str, modo: str) -> str:
+    """
+    Recuperação GraphRAG via OpenCypher no Neptune.
+    Retorna contexto estruturado de relacionamentos do grafo de conhecimento:
+      - Segmento → Produtos recomendados
+      - Segmento → Persona arquétipo
+      - Cliente → Clientes similares (k-NN via cluster)
+    Complementa o RAG BM25 do OpenSearch com raciocínio multi-hop.
+    """
+    if not NEPTUNE_ENDPOINT:
+        return ""
+    try:
+        client = _neptune_client()
+        blocos: List[str] = []
+
+        # Hop 1: produtos e estratégia do segmento
+        q_seg = (
+            f"MATCH (s:Segmento {{cluster_id: {cluster_id}}})-[:RECOMENDA]->(p:Produto) "
+            "RETURN s.nome AS segmento, collect(p.nome) AS produtos"
+        )
+        for row in client.query(q_seg):
+            seg = row.get("segmento", "")
+            produtos = ", ".join(row.get("produtos", []))
+            if produtos:
+                blocos.append(f"Produtos recomendados para '{seg}': {produtos}.")
+
+        # Hop 2: persona arquétipo do segmento
+        q_persona = (
+            f"MATCH (s:Segmento {{cluster_id: {cluster_id}}})-[:TEM_PERSONA]->(p:Persona) "
+            "RETURN p.nome AS nome, p.ocupacao AS ocupacao, p.contexto AS contexto"
+        )
+        for row in client.query(q_persona):
+            blocos.append(
+                f"Persona arquétipo: {row.get('nome')} ({row.get('ocupacao')}). "
+                f"{row.get('contexto', '')}"
+            )
+
+        # Hop 2 (twin): histórico financeiro de clientes similares no mesmo cluster
+        if modo == "twin" and cliente_id:
+            q_similar = (
+                f"MATCH (c:Cliente {{id: '{cliente_id}'}})-[:SIMILAR_A]->(s:Cliente) "
+                "RETURN s.id AS similar_id, s.score_credito AS score, "
+                "s.renda_mensal AS renda LIMIT 3"
+            )
+            similares = client.query(q_similar)
+            if similares:
+                resumo = "; ".join(
+                    f"Cliente {r['similar_id']} (score {r['score']:.0f}, renda R$ {r['renda']:,.0f})"
+                    for r in similares
+                )
+                blocos.append(f"Clientes similares no grafo: {resumo}.")
+
+        return "\n".join(blocos)
+    except Exception:
+        log.warning("Erro no RAG de grafo (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
 
 
 def _perfil(cluster_id: int) -> Dict[str, Any]:
@@ -353,7 +435,13 @@ def _executar(payload: Dict) -> str:
     cliente_id: str = payload.get("cliente_id", "")
 
     if modo == "twin":
-        contexto = _rag_twin(cliente_id, pergunta)
+        cluster_id = payload.get("cluster_id")
+        if cluster_id is None and dados:
+            cluster_id = _classificar(dados)
+        cluster_id = int(cluster_id) if cluster_id is not None else 0
+        contexto_bm25 = _rag_twin(cliente_id, pergunta)
+        contexto_graph = _rag_graph(cluster_id, cliente_id, "twin")
+        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_graph]))
         system = _system_twin(cliente_id, dados)
         resultado = _chamar_claude(system, contexto, pergunta, modo="twin")
         return json.dumps({
@@ -369,7 +457,9 @@ def _executar(payload: Dict) -> str:
                 raise ValueError("Modo 'persona' requer 'cluster_id' ou 'dados_cliente'.")
             cluster_id = _classificar(dados)
         cluster_id = int(cluster_id)
-        contexto = _rag_segmento(cluster_id, pergunta)
+        contexto_bm25 = _rag_segmento(cluster_id, pergunta)
+        contexto_graph = _rag_graph(cluster_id, "", "persona")
+        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_graph]))
         system = _system_persona(cluster_id)
         resultado = _chamar_claude(system, contexto, pergunta, modo="persona")
         p = _perfil(cluster_id)
@@ -386,7 +476,9 @@ def _executar(payload: Dict) -> str:
     if ausentes:
         raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
     cluster_id = _classificar(dados)
-    contexto = _rag_segmento(cluster_id, pergunta)
+    contexto_bm25 = _rag_segmento(cluster_id, pergunta)
+    contexto_graph = _rag_graph(cluster_id, cliente_id, "segmento")
+    contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_graph]))
     system = _system_segmento(cluster_id)
     resultado = _chamar_claude(system, contexto, pergunta, modo="segmento")
     p = _perfil(cluster_id)

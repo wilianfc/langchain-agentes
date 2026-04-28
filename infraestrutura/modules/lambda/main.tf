@@ -61,6 +61,7 @@ resource "aws_lambda_function" "worker" {
       S3_BUCKET           = var.s3_bucket_name
       S3_PREFIX           = "clientes-agente/"
       OPENSEARCH_ENDPOINT = var.opensearch_endpoint
+      NEPTUNE_ENDPOINT    = var.neptune_endpoint
       BEDROCK_MODEL_ID    = var.bedrock_model_id
       BEDROCK_REGION      = var.bedrock_region
       LANGFUSE_PUBLIC_KEY = var.langfuse_public_key

@@ -60,6 +60,12 @@ variable "layer_arn" {
   type        = string
 }
 
+variable "neptune_endpoint" {
+  description = "Endpoint de escrita do cluster Neptune"
+  type        = string
+  default     = ""
+}
+
 variable "bedrock_model_id" {
   description = "Model ID do Amazon Bedrock para inferência Claude"
   type        = string

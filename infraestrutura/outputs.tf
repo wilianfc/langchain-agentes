@@ -27,3 +27,13 @@ output "opensearch_endpoint" {
   description = "Endpoint do domínio OpenSearch"
   value       = module.opensearch.domain_endpoint
 }
+
+output "neptune_endpoint" {
+  description = "Endpoint de escrita do cluster Neptune"
+  value       = module.neptune.cluster_endpoint
+}
+
+output "neptune_reader_endpoint" {
+  description = "Endpoint de leitura do cluster Neptune"
+  value       = module.neptune.reader_endpoint
+}
