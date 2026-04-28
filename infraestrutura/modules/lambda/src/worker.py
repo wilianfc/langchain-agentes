@@ -156,7 +156,10 @@ def _extrair_texto(resp: Dict) -> str:
 
 
 def _perfil(cluster_id: int) -> Dict[str, Any]:
-    return _get_model()["perfis"].get(cluster_id, {})
+    # perfis.to_dict() gera {"coluna": {cluster_id: valor}, ...}
+    # precisamos inverter para {"coluna": valor} para o cluster específico
+    raw = _get_model()["perfis"]
+    return {col: vals[cluster_id] for col, vals in raw.items() if cluster_id in vals}
 
 
 def _system_segmento(cluster_id: int) -> str:

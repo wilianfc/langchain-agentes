@@ -28,6 +28,7 @@ def lambda_handler(event, context):
 
     modo = body.get("modo", "segmento")
     cliente_id = body.get("cliente_id", "")
+    cluster_id = body.get("cluster_id")
     dados_cliente = body.get("dados_cliente", body.get("dados", {}))
 
     request_id = str(uuid.uuid4())
@@ -44,17 +45,18 @@ def lambda_handler(event, context):
         "ttl": int(datetime.now(timezone.utc).timestamp()) + 86400,
     })
 
+    msg: dict = {
+        "request_id": request_id,
+        "pergunta": pergunta,
+        "modo": modo,
+        "cliente_id": cliente_id,
+        "dados_cliente": dados_cliente,
+    }
+    if cluster_id is not None:
+        msg["cluster_id"] = cluster_id
+
     try:
-        sqs.send_message(
-            QueueUrl=QUEUE_URL,
-            MessageBody=json.dumps({
-                "request_id": request_id,
-                "pergunta": pergunta,
-                "modo": modo,
-                "cliente_id": cliente_id,
-                "dados_cliente": dados_cliente,
-            }),
-        )
+        sqs.send_message(QueueUrl=QUEUE_URL, MessageBody=json.dumps(msg))
     except botocore.exceptions.ClientError as exc:
         return _response(503, {"error": f"Falha ao enfileirar requisição: {exc.response['Error']['Code']}"})
 

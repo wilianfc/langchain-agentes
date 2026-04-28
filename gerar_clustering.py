@@ -10,7 +10,7 @@ Uso:
   S3_BUCKET=langchain-agent-artifacts-dev \
   python gerar_clustering.py
 
-Dependências locais (instalar com pip):
+Dependências locais:
   pip install scikit-learn pandas numpy boto3 langchain-community \
               langchain-anthropic sentence-transformers opensearch-py requests-aws4auth
 """
@@ -24,33 +24,49 @@ from pathlib import Path
 
 import numpy as np
 
-# Garante que aws_pipeline_clientes.py está no path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from aws_pipeline_clientes import (
     gerar_dados_sinteticos,
     executar_clustering,
     _enriquecer_perfis,
-    indexar_digital_twins,
     criar_indice_opensearch,
     salvar_pkl_s3,
+    _aws_auth,
+    _opensearch_url,
+    _doc_twin,
     FEATURES,
     N_CLUSTERS,
     S3_BUCKET,
     S3_PREFIX,
     OPENSEARCH_ENDPOINT,
+    OPENSEARCH_TWIN_INDEX,
+    SEG_PREMIUM,
+    SEG_JOVEM,
+    SEG_RISCO,
+    SEG_MASSA,
 )
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import OpenSearchVectorSearch
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from opensearchpy import OpenSearch, RequestsHttpConnection
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("gerar-clustering")
 
 PKL_LOCAL = Path("modelo_clustering_slim.pkl")
 
+# Garante segmentos distintos com dados sintéticos
+SEGMENTOS_FORCADOS = {
+    0: SEG_PREMIUM,
+    1: SEG_JOVEM,
+    2: SEG_RISCO,
+    3: SEG_MASSA,
+}
 
-def _gerar_docs_cluster(cluster_id, perfil):
-    from langchain_core.documents import Document
+
+def _gerar_docs_cluster(cluster_id: int, perfil) -> list[Document]:
     seg = perfil["segmento"]
     return [
         Document(
@@ -75,17 +91,79 @@ def _gerar_docs_cluster(cluster_id, perfil):
     ]
 
 
+def _indexar_twins(df, embeddings: HuggingFaceEmbeddings, batch_size: int = 400) -> None:
+    """Indexa digital twins em lotes para evitar o limite de bulk_size do OpenSearch."""
+    auth = _aws_auth()
+    raw_client = OpenSearch(
+        hosts=[{"host": OPENSEARCH_ENDPOINT, "port": 443}],
+        http_auth=auth,
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection,
+    )
+    if raw_client.indices.exists(index=OPENSEARCH_TWIN_INDEX):
+        raw_client.indices.delete(index=OPENSEARCH_TWIN_INDEX)
+        log.info("Índice '%s' removido para re-indexação.", OPENSEARCH_TWIN_INDEX)
+
+    docs = [_doc_twin(row) for _, row in df.iterrows()]
+    total = len(docs)
+    log.info("Indexando %d digital twins em lotes de %d...", total, batch_size)
+
+    for i in range(0, total, batch_size):
+        batch = docs[i:i + batch_size]
+        if i == 0:
+            OpenSearchVectorSearch.from_documents(
+                batch, embeddings,
+                opensearch_url=_opensearch_url(),
+                index_name=OPENSEARCH_TWIN_INDEX,
+                http_auth=auth,
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection,
+                engine="lucene",
+                bulk_size=batch_size,
+            )
+        else:
+            vs = OpenSearchVectorSearch(
+                opensearch_url=_opensearch_url(),
+                index_name=OPENSEARCH_TWIN_INDEX,
+                embedding_function=embeddings,
+                http_auth=auth,
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection,
+            )
+            vs.add_documents(batch, bulk_size=batch_size)
+        log.info("  Lote %d/%d indexado (%d docs)", i // batch_size + 1, -(-total // batch_size), len(batch))
+
+    log.info("Digital twins indexados: %d documentos em '%s'.", total, OPENSEARCH_TWIN_INDEX)
+
+
 def main():
-    log.info("Gerando %d clientes sintéticos...", 1000)
+    log.info("Gerando 1000 clientes sintéticos...")
     df = gerar_dados_sinteticos(1000)
 
     log.info("Executando K-Means (%d clusters)...", N_CLUSTERS)
     df, kmeans, scaler, perfis = executar_clustering(df)
-    perfis = _enriquecer_perfis(perfis)
 
-    log.info("Segmentos encontrados:\n%s", perfis[["segmento", "n"]].to_string())
+    # Passa seg_df sintético para _enriquecer_perfis — assim os nomes forçados
+    # já são usados durante o lookup de personas em PERSONAS_SEGMENTO,
+    # garantindo que Carlos→Premium, Júlia→Jovem, Roberto→Risco, Ana→Massa.
+    import pandas as pd
+    seg_df = pd.DataFrame({
+        "cluster_id": list(SEGMENTOS_FORCADOS.keys()),
+        "segmento_nome": list(SEGMENTOS_FORCADOS.values()),
+        "persona_nome":     ["", "", "", ""],
+        "persona_ocupacao": ["", "", "", ""],
+        "persona_canal":    ["", "", "", ""],
+        "persona_contexto": ["", "", "", ""],
+        "prompt_segmento":  ["", "", "", ""],
+        "produtos":         ["", "", "", ""],
+    })
+    perfis = _enriquecer_perfis(perfis, seg_df)
 
-    # PKL slim: só numpy arrays + metadata — sem sklearn em Lambda
+    log.info("Segmentos:\n%s", perfis[["segmento", "n"]].to_string())
+
     slim = {
         "centroids": kmeans.cluster_centers_.copy(),
         "scale_mean": scaler.mean_.copy(),
@@ -105,8 +183,8 @@ def main():
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=40)
 
-        log.info("Indexando digital twins no OpenSearch...")
-        indexar_digital_twins(df, embeddings)
+        log.info("Indexando digital twins no OpenSearch (em lotes)...")
+        _indexar_twins(df, embeddings, batch_size=400)
 
         log.info("Indexando RAG de segmentos no OpenSearch...")
         for cid in perfis.index:
@@ -114,29 +192,15 @@ def main():
             chunks = splitter.split_documents(docs)
             criar_indice_opensearch(int(cid), chunks, embeddings)
     else:
-        log.warning(
-            "OPENSEARCH_ENDPOINT não definido — indexação OpenSearch ignorada. "
-            "Defina a variável para indexar."
-        )
+        log.warning("OPENSEARCH_ENDPOINT não definido — indexação ignorada.")
 
     if S3_BUCKET:
-        log.info("Salvando PKL slim no S3: s3://%s/%s", S3_BUCKET, S3_PREFIX + "modelo_clustering_slim.pkl")
+        log.info("Salvando PKL no S3: s3://%s/%s", S3_BUCKET, S3_PREFIX + "modelo_clustering_slim.pkl")
         salvar_pkl_s3(slim, "modelo_clustering_slim.pkl")
     else:
-        log.warning(
-            "S3_BUCKET não definido — PKL não enviado ao S3. "
-            "Defina S3_BUCKET e execute novamente, ou faça upload manual de '%s'.",
-            PKL_LOCAL,
-        )
+        log.warning("S3_BUCKET não definido — PKL não enviado ao S3.")
 
     log.info("=== Concluído ===")
-    log.info("Próximos passos:")
-    if not use_opensearch:
-        log.info("  1. Crie o domínio OpenSearch via terraform apply")
-        log.info("  2. Execute: OPENSEARCH_ENDPOINT=... S3_BUCKET=... python gerar_clustering.py")
-    if not S3_BUCKET:
-        log.info("  3. Defina S3_BUCKET e execute novamente")
-    log.info("  4. O Worker Lambda carregará o PKL slim do S3 automaticamente no cold start.")
 
 
 if __name__ == "__main__":

@@ -29,9 +29,22 @@ data "archive_file" "layer" {
   depends_on  = [null_resource.pip_install]
 }
 
+# Upload via S3 — necessário para layers > 50 MB (limite do upload direto é 50 MB)
+resource "aws_s3_object" "layer_zip" {
+  bucket = var.s3_bucket_name
+  key    = "lambda-layer/layer.zip"
+  source = data.archive_file.layer.output_path
+  etag   = data.archive_file.layer.output_base64sha256
+
+  depends_on = [data.archive_file.layer]
+}
+
 resource "aws_lambda_layer_version" "dependencies" {
-  filename            = data.archive_file.layer.output_path
   layer_name          = "${var.project_name}-dependencies-${var.environment}"
   compatible_runtimes = ["python3.11"]
+  s3_bucket           = aws_s3_object.layer_zip.bucket
+  s3_key              = aws_s3_object.layer_zip.key
   source_code_hash    = data.archive_file.layer.output_base64sha256
+
+  depends_on = [aws_s3_object.layer_zip]
 }

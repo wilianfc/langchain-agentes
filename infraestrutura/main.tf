@@ -67,9 +67,11 @@ module "secrets" {
 }
 
 module "lambda_layer" {
-  source       = "./modules/lambda_layer"
-  project_name = var.project_name
-  environment  = var.environment
+  source         = "./modules/lambda_layer"
+  project_name   = var.project_name
+  environment    = var.environment
+  s3_bucket_name = module.s3.bucket_name
+  depends_on     = [module.s3]
 }
 
 module "lambda" {
