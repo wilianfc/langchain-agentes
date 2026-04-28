@@ -17,3 +17,13 @@ output "sns_topic_arn" {
   description = "ARN do tópico SNS"
   value       = module.sns.topic_arn
 }
+
+output "s3_bucket_name" {
+  description = "Nome do bucket S3 de artefatos"
+  value       = module.s3.bucket_name
+}
+
+output "opensearch_endpoint" {
+  description = "Endpoint do domínio OpenSearch"
+  value       = module.opensearch.domain_endpoint
+}
