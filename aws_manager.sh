@@ -105,7 +105,7 @@ tf_deploy() {
 # ── Lê outputs do Terraform ───────────────────────────────────────────────────
 read_tf_outputs() {
     cd "$TF_DIR"
-    API_ENDPOINT=$(terraform output -raw api_endpoint 2>/dev/null || echo "")
+    API_ENDPOINT=$(terraform output -raw api_endpoint 2>/dev/null | sed 's|/$||' || echo "")
     S3_BUCKET=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
     OPENSEARCH_ENDPOINT=$(terraform output -raw opensearch_endpoint 2>/dev/null || echo "")
 
@@ -272,7 +272,12 @@ tf_purge() {
     empty_s3_bucket "$s3_bucket"
 
     info "terraform destroy..."
-    terraform destroy -auto-approve -input=false -no-color
+    # anthropic_api_key não é necessária no destroy, mas a variável é obrigatória
+    local var_args=()
+    if [[ ! -f "$TF_DIR/secrets.auto.tfvars" ]]; then
+        var_args+=(-var "anthropic_api_key=destroy-placeholder")
+    fi
+    terraform destroy -auto-approve -input=false -no-color "${var_args[@]}"
     success "Todos os recursos AWS removidos."
 }
 
