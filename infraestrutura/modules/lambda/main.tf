@@ -56,14 +56,15 @@ resource "aws_lambda_function" "worker" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE       = var.dynamodb_table_name
-      SNS_TOPIC_ARN        = var.sns_topic_arn
-      S3_BUCKET            = var.s3_bucket_name
-      S3_PREFIX            = "clientes-agente/"
-      OPENSEARCH_ENDPOINT  = var.opensearch_endpoint
-      ANTHROPIC_SECRET_ARN = var.anthropic_secret_arn
-      LANGFUSE_PUBLIC_KEY  = var.langfuse_public_key
-      LANGFUSE_SECRET_KEY  = var.langfuse_secret_key
+      DYNAMODB_TABLE      = var.dynamodb_table_name
+      SNS_TOPIC_ARN       = var.sns_topic_arn
+      S3_BUCKET           = var.s3_bucket_name
+      S3_PREFIX           = "clientes-agente/"
+      OPENSEARCH_ENDPOINT = var.opensearch_endpoint
+      BEDROCK_MODEL_ID    = var.bedrock_model_id
+      BEDROCK_REGION      = var.bedrock_region
+      LANGFUSE_PUBLIC_KEY = var.langfuse_public_key
+      LANGFUSE_SECRET_KEY = var.langfuse_secret_key
     }
   }
 

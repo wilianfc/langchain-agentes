@@ -17,9 +17,10 @@ variable "environment" {
 }
 
 variable "anthropic_api_key" {
-  description = "Chave de API da Anthropic (Claude)"
+  description = "Chave de API da Anthropic — não mais usada (migrado para Bedrock). Mantida para compatibilidade."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "langfuse_public_key" {

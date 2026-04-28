@@ -83,9 +83,15 @@ resource "aws_iam_role_policy" "lambda_worker_policy" {
         Resource = ["${var.s3_bucket_arn}", "${var.s3_bucket_arn}/*"]
       },
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = "arn:aws:secretsmanager:*:*:secret:prod/anthropic*"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ]
+        Resource = [
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude*",
+          "arn:aws:bedrock:*:*:inference-profile/*",
+        ]
       },
       {
         Effect   = "Allow"

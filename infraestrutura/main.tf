@@ -61,11 +61,6 @@ module "opensearch" {
   worker_role_arn = module.iam.lambda_worker_role_arn
 }
 
-module "secrets" {
-  source            = "./modules/secrets"
-  anthropic_api_key = var.anthropic_api_key
-}
-
 module "lambda_layer" {
   source         = "./modules/lambda_layer"
   project_name   = var.project_name
@@ -87,9 +82,8 @@ module "lambda" {
   sns_topic_arn         = module.sns.topic_arn
   opensearch_endpoint   = module.opensearch.domain_endpoint
   s3_bucket_name        = module.s3.bucket_name
-  layer_arn             = module.lambda_layer.layer_arn
-  anthropic_secret_arn  = module.secrets.anthropic_secret_arn
-  langfuse_public_key   = var.langfuse_public_key
+  layer_arn           = module.lambda_layer.layer_arn
+  langfuse_public_key = var.langfuse_public_key
   langfuse_secret_key   = var.langfuse_secret_key
 }
 

@@ -60,9 +60,16 @@ variable "layer_arn" {
   type        = string
 }
 
-variable "anthropic_secret_arn" {
-  description = "ARN do secret da Anthropic no Secrets Manager"
+variable "bedrock_model_id" {
+  description = "Model ID do Amazon Bedrock para inferência Claude"
   type        = string
+  default     = "us.anthropic.claude-sonnet-4-5-20250514-v1:0"
+}
+
+variable "bedrock_region" {
+  description = "Região AWS onde o Bedrock está disponível (cross-region desde sa-east-1)"
+  type        = string
+  default     = "us-east-1"
 }
 
 variable "langfuse_public_key" {

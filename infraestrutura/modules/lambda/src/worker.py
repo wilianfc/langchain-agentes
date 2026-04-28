@@ -26,10 +26,8 @@ from botocore.config import Config
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
-import otel_config  # inicializa OTel + openlit antes de qualquer chamada Anthropic
+import otel_config  # inicializa OTel + openlit antes de qualquer chamada Bedrock
 otel_config.init()
-
-import anthropic  # noqa: E402 — após otel_config para capturar instrumentação
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -38,33 +36,30 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 _config = Config(connect_timeout=5, read_timeout=30)
 _dynamodb = boto3.resource("dynamodb", config=_config)
 _sns = boto3.client("sns", config=_config)
-_secrets = boto3.client("secretsmanager", config=_config)
 _s3 = boto3.client("s3", config=_config)
 
 # ── Variáveis de ambiente ──────────────────────────────────────────────────────
 TABLE_NAME = os.environ["DYNAMODB_TABLE"]
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
-ANTHROPIC_SECRET_ARN = os.environ["ANTHROPIC_SECRET_ARN"]
 S3_BUCKET = os.environ.get("S3_BUCKET", "")
 S3_PREFIX = os.environ.get("S3_PREFIX", "clientes-agente/")
 OPENSEARCH_ENDPOINT = os.environ.get("OPENSEARCH_ENDPOINT", "")
 AWS_REGION = os.environ.get("AWS_REGION", "sa-east-1")
 AWS_ACCOUNT_ID = os.environ.get("AWS_ACCOUNT_ID", "")
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
+BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 
 FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
 
-# ── Estado de cold start ───────────────────────────────────────────────────────
-_anthropic_client: Optional[anthropic.Anthropic] = None
-_model_data: Optional[Dict[str, Any]] = None  # slim PKL carregado do S3
+# ── Clientes inicializados no módulo (fora do handler — boas práticas Lambda) ──
+_bedrock_client = boto3.client(
+    "bedrock-runtime",
+    region_name=BEDROCK_REGION,
+    config=Config(connect_timeout=5, read_timeout=120),
+)
 
-
-
-def _get_anthropic() -> anthropic.Anthropic:
-    global _anthropic_client
-    if _anthropic_client is None:
-        key = _secrets.get_secret_value(SecretId=ANTHROPIC_SECRET_ARN)["SecretString"]
-        _anthropic_client = anthropic.Anthropic(api_key=key)
-    return _anthropic_client
+# ── Estado de cold start (PKL carregado do S3 na primeira invocação) ───────────
+_model_data: Optional[Dict[str, Any]] = None
 
 
 def _get_model() -> Dict[str, Any]:
@@ -332,15 +327,22 @@ def _chamar_claude(system: str, contexto_rag: str, pergunta: str, modo: str = "s
     if contexto_rag:
         conteudo = f"Contexto relevante:\n{contexto_rag}\n\nPergunta: {pergunta}"
 
-    messages = _fewshot(modo) + [{"role": "user", "content": conteudo}]
+    # Converte few-shot turns para o formato Converse API (content como lista de blocos)
+    converse_messages = []
+    for turn in _fewshot(modo):
+        converse_messages.append({
+            "role": turn["role"],
+            "content": [{"text": turn["content"]}],
+        })
+    converse_messages.append({"role": "user", "content": [{"text": conteudo}]})
 
-    msg = _get_anthropic().messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        system=system,
-        messages=messages,
+    resp = _bedrock_client.converse(
+        modelId=BEDROCK_MODEL_ID,
+        system=[{"text": system}],
+        messages=converse_messages,
+        inferenceConfig={"maxTokens": 2048},
     )
-    return msg.content[0].text
+    return resp["output"]["message"]["content"][0]["text"]
 
 
 
