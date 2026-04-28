@@ -96,6 +96,17 @@ module "lambda" {
   langfuse_secret_key   = var.langfuse_secret_key
 }
 
+module "neptune_replication" {
+  source                      = "./modules/neptune_replication"
+  project_name                = var.project_name
+  environment                 = var.environment
+  neptune_endpoint            = module.neptune.cluster_endpoint
+  neptune_cluster_resource_id = module.neptune.cluster_resource_id
+  opensearch_endpoint         = module.opensearch.domain_endpoint
+  layer_arn                   = module.lambda_layer.layer_arn
+  depends_on                  = [module.neptune, module.opensearch, module.lambda_layer]
+}
+
 module "api_gateway" {
   source                   = "./modules/api_gateway"
   project_name             = var.project_name

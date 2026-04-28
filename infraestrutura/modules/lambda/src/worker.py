@@ -121,6 +121,34 @@ def _rag_segmento(cluster_id: int, query: str, k: int = 3) -> str:
         return ""
 
 
+def _rag_graph_sync(cluster_id: int, query: str, k: int = 3) -> str:
+    """
+    Consulta o índice OpenSearch 'neptune-graph-sync' replicado do Neptune.
+    Permite busca BM25 sobre o snapshot do grafo sem chamar Neptune diretamente,
+    reduzindo latência e eliminando dependência de VPC no caminho crítico.
+    """
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index="neptune-graph-sync",
+            body={
+                "query": {
+                    "bool": {
+                        "must": {"match": {"text": query}},
+                        "filter": {"term": {"cluster_id": cluster_id}},
+                    }
+                },
+                "size": k,
+            },
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG graph-sync (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
 def _rag_twin(cliente_id: str, query: str, k: int = 3) -> str:
     if not OPENSEARCH_ENDPOINT:
         return ""
@@ -440,8 +468,9 @@ def _executar(payload: Dict) -> str:
             cluster_id = _classificar(dados)
         cluster_id = int(cluster_id) if cluster_id is not None else 0
         contexto_bm25 = _rag_twin(cliente_id, pergunta)
-        contexto_graph = _rag_graph(cluster_id, cliente_id, "twin")
-        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_graph]))
+        contexto_sync = _rag_graph_sync(cluster_id, pergunta)   # grafo replicado (rápido)
+        contexto_graph = _rag_graph(cluster_id, cliente_id, "twin")  # Neptune live (similar)
+        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
         system = _system_twin(cliente_id, dados)
         resultado = _chamar_claude(system, contexto, pergunta, modo="twin")
         return json.dumps({
@@ -458,8 +487,9 @@ def _executar(payload: Dict) -> str:
             cluster_id = _classificar(dados)
         cluster_id = int(cluster_id)
         contexto_bm25 = _rag_segmento(cluster_id, pergunta)
-        contexto_graph = _rag_graph(cluster_id, "", "persona")
-        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_graph]))
+        contexto_sync = _rag_graph_sync(cluster_id, pergunta)   # grafo replicado (rápido)
+        contexto_graph = _rag_graph(cluster_id, "", "persona")  # Neptune live (multi-hop)
+        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
         system = _system_persona(cluster_id)
         resultado = _chamar_claude(system, contexto, pergunta, modo="persona")
         p = _perfil(cluster_id)
@@ -477,8 +507,9 @@ def _executar(payload: Dict) -> str:
         raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
     cluster_id = _classificar(dados)
     contexto_bm25 = _rag_segmento(cluster_id, pergunta)
-    contexto_graph = _rag_graph(cluster_id, cliente_id, "segmento")
-    contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_graph]))
+    contexto_sync = _rag_graph_sync(cluster_id, pergunta)   # grafo replicado (rápido)
+    contexto_graph = _rag_graph(cluster_id, cliente_id, "segmento")  # Neptune live
+    contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
     system = _system_segmento(cluster_id)
     resultado = _chamar_claude(system, contexto, pergunta, modo="segmento")
     p = _perfil(cluster_id)
