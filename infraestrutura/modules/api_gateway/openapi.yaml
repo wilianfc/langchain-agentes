@@ -1,0 +1,247 @@
+openapi: "3.0.1"
+info:
+  title: "Langchain Agent API"
+  description: "API para o agente RAG de segmentação de clientes bancários (modos: segmento, persona, twin)."
+  version: "1.0.0"
+
+x-amazon-apigateway-cors:
+  allowOrigins:
+    - "*"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+
+paths:
+  /query:
+    post:
+      operationId: submitQuery
+      summary: Enfileira uma pergunta para o agente
+      description: |
+        Enfileira a requisição na fila SQS e retorna um `request_id`.
+        Use `GET /status/{request_id}` para obter o resultado quando `status = COMPLETED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+            examples:
+              segmento:
+                summary: Modo segmento (dados do cliente)
+                value:
+                  pergunta: "Que produtos de investimento devo oferecer?"
+                  modo: "segmento"
+                  dados_cliente:
+                    idade: 55
+                    renda_mensal: 18000
+                    saldo_medio: 120000
+                    transacoes_mes: 25
+                    score_credito: 820
+                    num_produtos: 7
+              persona:
+                summary: Modo persona (arquétipo do cluster)
+                value:
+                  pergunta: "O que você acha de um cartão com cashback?"
+                  modo: "persona"
+                  cluster_id: 1
+              twin:
+                summary: Modo twin (digital twin do cliente)
+                value:
+                  pergunta: "Como melhoro meu score de crédito?"
+                  modo: "twin"
+                  cliente_id: "C00042"
+                  dados_cliente:
+                    idade: 35
+                    renda_mensal: 3200
+                    saldo_medio: 800
+                    transacoes_mes: 12
+                    score_credito: 520
+                    num_produtos: 2
+                    canal_digital: true
+                    inadimplente: false
+      responses:
+        "202":
+          description: Requisição enfileirada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryAccepted"
+        "400":
+          description: Requisição inválida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Falha ao enfileirar na fila SQS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${controller_invoke_arn}"
+        payloadFormatVersion: "2.0"
+
+  /status/{request_id}:
+    get:
+      operationId: getStatus
+      summary: Consulta o status e resultado de uma requisição
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID retornado pelo POST /query
+      responses:
+        "200":
+          description: Status da requisição
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryStatus"
+        "404":
+          description: Requisição não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${status_invoke_arn}"
+        payloadFormatVersion: "2.0"
+
+components:
+  schemas:
+    QueryRequest:
+      type: object
+      required:
+        - pergunta
+      properties:
+        pergunta:
+          type: string
+          description: Pergunta para o agente
+          example: "Que produtos devo oferecer para este cliente?"
+        modo:
+          type: string
+          enum: [segmento, persona, twin]
+          default: segmento
+          description: |
+            Modo de operação do agente:
+            - `segmento`: gerente analisa o cliente em 3ª pessoa (requer dados_cliente)
+            - `persona`: arquétipo do cluster responde em 1ª pessoa (requer cluster_id ou dados_cliente)
+            - `twin`: digital twin do cliente específico em 1ª pessoa (requer cliente_id e dados_cliente)
+        cliente_id:
+          type: string
+          description: ID do cliente (obrigatório para modo twin)
+          example: "C00042"
+        cluster_id:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: |
+            Cluster do cliente (opcional para modo persona; se omitido, é calculado a partir de dados_cliente):
+            - 0: Carlos — Premium Conservador
+            - 1: Júlia — Jovem Digital
+            - 2: Roberto — Alto Risco
+            - 3: Ana — Massa Estável
+        dados_cliente:
+          $ref: "#/components/schemas/DadosCliente"
+
+    DadosCliente:
+      type: object
+      description: Dados financeiros do cliente para classificação no cluster
+      required:
+        - idade
+        - renda_mensal
+        - saldo_medio
+        - transacoes_mes
+        - score_credito
+        - num_produtos
+      properties:
+        idade:
+          type: number
+          minimum: 18
+          maximum: 100
+          example: 35
+        renda_mensal:
+          type: number
+          minimum: 0
+          example: 3200
+        saldo_medio:
+          type: number
+          minimum: 0
+          example: 800
+        transacoes_mes:
+          type: number
+          minimum: 0
+          example: 12
+        score_credito:
+          type: number
+          minimum: 0
+          maximum: 1000
+          example: 520
+        num_produtos:
+          type: number
+          minimum: 0
+          example: 2
+        canal_digital:
+          type: boolean
+          default: false
+          example: true
+        inadimplente:
+          type: boolean
+          default: false
+          example: false
+
+    QueryAccepted:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          example: "6bbe66be-44f2-4117-894c-125b28584b25"
+        status:
+          type: string
+          enum: [PENDING]
+          example: "PENDING"
+        mensagem:
+          type: string
+          example: "Requisição enfileirada. Use o request_id para consultar o status."
+
+    QueryStatus:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+        resultado:
+          type: string
+          description: JSON serializado com a resposta do agente (presente quando status=COMPLETED)
+        erro:
+          type: string
+          description: Stack trace do erro (presente quando status=FAILED)
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Campo 'pergunta' é obrigatório"
