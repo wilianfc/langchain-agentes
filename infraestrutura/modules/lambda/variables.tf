@@ -73,7 +73,7 @@ variable "bedrock_model_id" {
 }
 
 variable "bedrock_region" {
-  description = "Região AWS onde o Bedrock está disponível (cross-region desde sa-east-1)"
+  description = "Região AWS do Bedrock (cross-region desde sa-east-1 — us-east-1 tem mais modelos disponíveis)"
   type        = string
   default     = "us-east-1"
 }
