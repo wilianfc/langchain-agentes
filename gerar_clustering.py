@@ -11,8 +11,8 @@ Uso:
   python gerar_clustering.py
 
 Dependências locais:
-  pip install scikit-learn pandas numpy boto3 langchain-community \
-              langchain-anthropic sentence-transformers opensearch-py requests-aws4auth
+  pip install scikit-learn pandas numpy boto3 langchain-aws langchain-community \
+              langchain-anthropic opensearch-py requests-aws4auth
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ from aws_pipeline_clientes import (
     SEG_RISCO,
     SEG_MASSA,
 )
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_aws import BedrockEmbeddings
 from langchain_community.vectorstores import OpenSearchVectorSearch
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -55,7 +55,8 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("gerar-clustering")
 
-PKL_LOCAL = Path("modelo_clustering_slim.pkl")
+PKL_FILENAME = "modelo_clustering_slim.pkl"
+PKL_LOCAL = Path(PKL_FILENAME)
 
 # Garante segmentos distintos com dados sintéticos
 SEGMENTOS_FORCADOS = {
@@ -91,7 +92,7 @@ def _gerar_docs_cluster(cluster_id: int, perfil) -> list[Document]:
     ]
 
 
-def _indexar_twins(df, embeddings: HuggingFaceEmbeddings, batch_size: int = 400) -> None:
+def _indexar_twins(df, embeddings: BedrockEmbeddings, batch_size: int = 400) -> None:
     """Indexa digital twins em lotes para evitar o limite de bulk_size do OpenSearch."""
     auth = _aws_auth()
     raw_client = OpenSearch(
@@ -179,8 +180,11 @@ def main():
     use_opensearch = bool(OPENSEARCH_ENDPOINT)
 
     if use_opensearch:
-        log.info("Carregando modelo de embeddings HuggingFace (all-MiniLM-L6-v2)...")
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        log.info("Carregando Bedrock Titan Embeddings (amazon.titan-embed-text-v2:0)...")
+        embeddings = BedrockEmbeddings(
+            model_id="amazon.titan-embed-text-v2:0",
+            region_name=os.environ.get("BEDROCK_REGION", "us-east-1"),
+        )
         splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=40)
 
         log.info("Indexando digital twins no OpenSearch (em lotes)...")
@@ -195,8 +199,8 @@ def main():
         log.warning("OPENSEARCH_ENDPOINT não definido — indexação ignorada.")
 
     if S3_BUCKET:
-        log.info("Salvando PKL no S3: s3://%s/%s", S3_BUCKET, S3_PREFIX + "modelo_clustering_slim.pkl")
-        salvar_pkl_s3(slim, "modelo_clustering_slim.pkl")
+        log.info("Salvando PKL no S3: s3://%s/%s", S3_BUCKET, S3_PREFIX + PKL_FILENAME)
+        salvar_pkl_s3(slim, PKL_FILENAME)
     else:
         log.warning("S3_BUCKET não definido — PKL não enviado ao S3.")
 

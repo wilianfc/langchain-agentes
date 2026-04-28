@@ -230,7 +230,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from langchain_anthropic import ChatAnthropic
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_aws import BedrockEmbeddings
 from langchain_community.vectorstores import FAISS, OpenSearchVectorSearch
 from langchain_core.documents import Document
 from langchain_core.tools import StructuredTool, tool
@@ -438,7 +438,7 @@ def _index_name(cluster_id: int) -> str:
 def criar_indice_opensearch(
     cluster_id: int,
     documentos: List[Document],
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: BedrockEmbeddings,
 ) -> OpenSearchVectorSearch:
     """
     Cria (ou recria) um índice OpenSearch para o cluster e indexa os documentos.
@@ -481,7 +481,7 @@ def criar_indice_opensearch(
 
 def carregar_retriever_opensearch(
     cluster_id: int,
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: BedrockEmbeddings,
     k: int = 3,
 ) -> VectorStoreRetriever:
     """
@@ -881,7 +881,7 @@ def _prompt_twin(row: pd.Series) -> str:
 
 def indexar_digital_twins(
     df: pd.DataFrame,
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: BedrockEmbeddings,
 ) -> None:
     """
     Indexa todos os clientes no índice de digital twins do OpenSearch.
@@ -930,7 +930,7 @@ def indexar_digital_twins(
 
 def _retriever_twin_opensearch(
     cliente_id: str,
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: BedrockEmbeddings,
 ) -> VectorStoreRetriever:
     """
     Retorna um retriever que filtra por `cliente_id` no índice de twins.
@@ -956,7 +956,7 @@ def _retriever_twin_opensearch(
 def criar_twin_sob_demanda(
     cliente_id: str,
     dados_cliente: Dict[str, Any],
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: BedrockEmbeddings,
     model: ChatAnthropic,
 ) -> Any:
     """
@@ -1144,7 +1144,7 @@ class PipelineInference:
         kmeans: KMeans,
         scaler: StandardScaler,
         perfis: pd.DataFrame,
-        embeddings: HuggingFaceEmbeddings,
+        embeddings: BedrockEmbeddings,
         api_key: str,
         use_opensearch: bool = True,
         vector_stores_local: Optional[Dict[int, FAISS]] = None,
@@ -1164,7 +1164,7 @@ class PipelineInference:
 
     def _inicializar_agentes(
         self,
-        embeddings: HuggingFaceEmbeddings,
+        embeddings: BedrockEmbeddings,
         use_opensearch: bool,
         local_stores: Optional[Dict[int, FAISS]],
     ) -> Dict[int, Dict[str, Any]]:
@@ -1320,7 +1320,10 @@ def run_pipeline() -> Tuple[KMeans, StandardScaler, pd.DataFrame, Optional[Dict]
     df = carregar_dados_s3() if DATA_SOURCE == "s3" else gerar_dados_sinteticos(1_000)
     logger.info("Dados: %d clientes.", len(df))
 
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = BedrockEmbeddings(
+        model_id="amazon.titan-embed-text-v2:0",
+        region_name=os.environ.get("BEDROCK_REGION", "us-east-1"),
+    )
     splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=40)
     use_opensearch = bool(OPENSEARCH_ENDPOINT)
 
@@ -1396,7 +1399,10 @@ def _get_pipeline() -> PipelineInference:
     scaler: StandardScaler = artefatos["scaler"]
     perfis = pd.DataFrame(artefatos["perfis"])
 
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = BedrockEmbeddings(
+        model_id="amazon.titan-embed-text-v2:0",
+        region_name=os.environ.get("BEDROCK_REGION", "us-east-1"),
+    )
     api_key = get_anthropic_key()
 
     # O retriever conecta ao OpenSearch — sem carregar índices localmente
@@ -1512,7 +1518,10 @@ if __name__ == "__main__":
             raise EnvironmentError("Defina ANTHROPIC_API_KEY para o modo local.")
 
         kmeans, scaler, perfis, local_stores = run_pipeline()
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        embeddings = BedrockEmbeddings(
+        model_id="amazon.titan-embed-text-v2:0",
+        region_name=os.environ.get("BEDROCK_REGION", "us-east-1"),
+    )
 
         inference = PipelineInference(
             kmeans, scaler, perfis, embeddings, api_key,
