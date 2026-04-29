@@ -161,7 +161,7 @@ def _rag_twin(cliente_id: str, query: str, k: int = 3) -> str:
                 "query": {
                     "bool": {
                         "must": {"match": {"text": query}},
-                        "filter": {"term": {"metadata.cliente_id": cliente_id}},
+                        "filter": {"term": {"metadata.cliente_id.keyword": cliente_id}},
                     }
                 },
                 "size": k,
@@ -177,6 +177,68 @@ def _extrair_texto(resp: Dict) -> str:
     hits = resp.get("hits", {}).get("hits", [])
     textos = [h.get("_source", {}).get("text", "") for h in hits]
     return "\n\n".join(t for t in textos if t)
+
+
+_STOPWORDS = {
+    "que", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+    "por", "para", "com", "uma", "um", "os", "as", "se", "ao", "à", "e",
+    "o", "a", "é", "são", "tem", "foi", "ter", "ser", "não", "mas", "ou",
+    "seu", "sua", "seus", "suas", "este", "esta", "esse", "essa", "isso",
+}
+
+
+def _palavras_chave(texto: str) -> set:
+    return {
+        w.strip(".,;:!?()\"'").lower()
+        for w in texto.split()
+        if len(w) > 4 and w.strip(".,;:!?()\"'").lower() not in _STOPWORDS
+    }
+
+
+def _confiabilidade(bm25: str, sync: str, graph: str, resposta: str) -> Dict:
+    """
+    Score de confiabilidade baseado em duas dimensões:
+      - Cobertura de fontes: quais camadas RAG entregaram conteúdo (85% do score)
+      - Sobreposição léxica: termos do contexto presentes na resposta (15%)
+    """
+    fontes: List[str] = []
+    cobertura = 0.0
+
+    if bm25.strip():
+        fontes.append("opensearch_bm25")
+        cobertura += 0.40
+    if graph.strip():
+        fontes.append("neptune_live")
+        cobertura += 0.30
+    if sync.strip():
+        fontes.append("neptune_sync")
+        cobertura += 0.15
+
+    contexto_total = " ".join(filter(None, [bm25, sync, graph]))
+    overlap = 0.0
+    if contexto_total and resposta:
+        ctx_kw = _palavras_chave(contexto_total)
+        resp_kw = _palavras_chave(resposta)
+        if ctx_kw and resp_kw:
+            overlap = min(len(ctx_kw & resp_kw) / min(len(ctx_kw), len(resp_kw)), 1.0)
+
+    score = round(min(cobertura + overlap * 0.15, 1.0), 2)
+    if score >= 0.70:
+        nivel = "alto"
+    elif score >= 0.40:
+        nivel = "medio"
+    else:
+        nivel = "baixo"
+
+    return {
+        "score": score,
+        "nivel": nivel,
+        "fontes_ativas": fontes,
+        "detalhes": {
+            "cobertura_fontes": round(cobertura, 2),
+            "sobreposicao_lexica": round(overlap, 2),
+        },
+    }
 
 
 
@@ -461,8 +523,8 @@ def _executar(payload: Dict) -> str:
             cluster_id = _classificar(dados)
         cluster_id = int(cluster_id) if cluster_id is not None else 0
         contexto_bm25 = _rag_twin(cliente_id, pergunta)
-        contexto_sync = _rag_graph_sync(cluster_id, pergunta)   # grafo replicado (rápido)
-        contexto_graph = _rag_graph(cluster_id, cliente_id, "twin")  # Neptune live (similar)
+        contexto_sync = _rag_graph_sync(cluster_id, pergunta)
+        contexto_graph = _rag_graph(cluster_id, cliente_id, "twin")
         contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
         system = _system_twin(cliente_id, dados)
         resultado = _chamar_claude(system, contexto, pergunta, modo="twin")
@@ -470,6 +532,7 @@ def _executar(payload: Dict) -> str:
             "cliente_id": cliente_id,
             "modo": "twin",
             "resposta": resultado,
+            "indice_confiabilidade": _confiabilidade(contexto_bm25, contexto_sync, contexto_graph, resultado),
         }, ensure_ascii=False)
 
     if modo == "persona":
@@ -480,8 +543,8 @@ def _executar(payload: Dict) -> str:
             cluster_id = _classificar(dados)
         cluster_id = int(cluster_id)
         contexto_bm25 = _rag_segmento(cluster_id, pergunta)
-        contexto_sync = _rag_graph_sync(cluster_id, pergunta)   # grafo replicado (rápido)
-        contexto_graph = _rag_graph(cluster_id, "", "persona")  # Neptune live (multi-hop)
+        contexto_sync = _rag_graph_sync(cluster_id, pergunta)
+        contexto_graph = _rag_graph(cluster_id, "", "persona")
         contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
         system = _system_persona(cluster_id)
         resultado = _chamar_claude(system, contexto, pergunta, modo="persona")
@@ -492,6 +555,7 @@ def _executar(payload: Dict) -> str:
             "persona_nome": p.get("persona_nome", ""),
             "modo": "persona",
             "resposta": resultado,
+            "indice_confiabilidade": _confiabilidade(contexto_bm25, contexto_sync, contexto_graph, resultado),
         }, ensure_ascii=False)
 
     # modo segmento (default)
@@ -500,8 +564,8 @@ def _executar(payload: Dict) -> str:
         raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
     cluster_id = _classificar(dados)
     contexto_bm25 = _rag_segmento(cluster_id, pergunta)
-    contexto_sync = _rag_graph_sync(cluster_id, pergunta)   # grafo replicado (rápido)
-    contexto_graph = _rag_graph(cluster_id, cliente_id, "segmento")  # Neptune live
+    contexto_sync = _rag_graph_sync(cluster_id, pergunta)
+    contexto_graph = _rag_graph(cluster_id, cliente_id, "segmento")
     contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
     system = _system_segmento(cluster_id)
     resultado = _chamar_claude(system, contexto, pergunta, modo="segmento")
@@ -512,6 +576,7 @@ def _executar(payload: Dict) -> str:
         "segmento": p.get("segmento", ""),
         "modo": "segmento",
         "resposta": resultado,
+        "indice_confiabilidade": _confiabilidade(contexto_bm25, contexto_sync, contexto_graph, resultado),
     }, ensure_ascii=False)
 
 
