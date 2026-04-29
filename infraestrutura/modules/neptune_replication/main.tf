@@ -64,6 +64,14 @@ resource "aws_lambda_function" "replicator" {
   memory_size      = 512
   layers           = [var.layer_arn]
 
+  dynamic "vpc_config" {
+    for_each = length(var.vpc_subnet_ids) > 0 ? [1] : []
+    content {
+      subnet_ids         = var.vpc_subnet_ids
+      security_group_ids = var.vpc_security_group_ids
+    }
+  }
+
   environment {
     variables = {
       OPENSEARCH_ENDPOINT = var.opensearch_endpoint

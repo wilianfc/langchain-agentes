@@ -124,7 +124,9 @@ module "neptune_replication" {
   neptune_cluster_resource_id = module.neptune.cluster_resource_id
   opensearch_endpoint         = module.opensearch.domain_endpoint
   layer_arn                   = module.lambda_layer.layer_arn
-  depends_on                  = [module.neptune, module.opensearch, module.lambda_layer]
+  vpc_subnet_ids              = data.aws_subnets.default.ids
+  vpc_security_group_ids      = [module.vpc_endpoints.lambda_security_group_id]
+  depends_on                  = [module.neptune, module.opensearch, module.lambda_layer, module.vpc_endpoints]
 }
 
 module "api_gateway" {
