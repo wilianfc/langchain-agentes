@@ -180,26 +180,30 @@ def _extrair_texto(resp: Dict) -> str:
 
 
 def _neptune_client():
-    """Retorna cliente HTTP simples para consultas Gremlin/OpenCypher via HTTPS."""
-    import urllib.request
-    import urllib.parse
+    """Retorna cliente HTTP com SigV4 para consultas OpenCypher no Neptune."""
+    import botocore.auth
+    import botocore.awsrequest
 
     class _NeptuneClient:
-        def __init__(self, endpoint: str):
-            self._base = f"https://{endpoint}:8182"
+        def __init__(self, endpoint: str, region: str):
+            self._url = f"https://{endpoint}:8182/openCypher"
+            self._endpoint = endpoint
+            self._region = region
+            self._creds = boto3.session.Session().get_credentials()
 
         def query(self, cypher: str) -> List[Dict]:
-            data = urllib.parse.urlencode({"query": cypher}).encode()
-            req = urllib.request.Request(
-                f"{self._base}/openCypher",
-                data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            body = json.dumps({"query": cypher}).encode("utf-8")
+            aws_req = botocore.awsrequest.AWSRequest(
+                method="POST", url=self._url, data=body,
+                headers={"Content-Type": "application/json", "Host": f"{self._endpoint}:8182"},
             )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                import json as _json
-                return _json.loads(r.read()).get("results", [])
+            botocore.auth.SigV4Auth(self._creds, "neptune-db", self._region).add_auth(aws_req)
+            import requests as _requests
+            resp = _requests.post(self._url, data=body, headers=dict(aws_req.headers), timeout=10)
+            resp.raise_for_status()
+            return resp.json().get("results", [])
 
-    return _NeptuneClient(NEPTUNE_ENDPOINT)
+    return _NeptuneClient(NEPTUNE_ENDPOINT, AWS_REGION)
 
 
 def _rag_graph(cluster_id: int, cliente_id: str, modo: str) -> str:

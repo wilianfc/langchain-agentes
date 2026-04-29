@@ -20,6 +20,17 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
 module "dynamodb" {
   source       = "./modules/dynamodb"
   project_name = var.project_name
@@ -67,7 +78,12 @@ module "neptune" {
   project_name   = var.project_name
   environment    = var.environment
   worker_role_id = module.iam.lambda_worker_role_id
-  depends_on     = [module.iam]
+}
+
+module "vpc_endpoints" {
+  source       = "./modules/vpc_endpoints"
+  project_name = var.project_name
+  environment  = var.environment
 }
 
 module "lambda_layer" {
@@ -79,22 +95,25 @@ module "lambda_layer" {
 }
 
 module "lambda" {
-  source                = "./modules/lambda"
-  project_name          = var.project_name
-  environment           = var.environment
-  controller_role_arn   = module.iam.lambda_controller_role_arn
-  worker_role_arn       = module.iam.lambda_worker_role_arn
-  status_role_arn       = module.iam.lambda_status_role_arn
-  sqs_queue_url         = module.sqs.queue_url
-  sqs_queue_arn         = module.sqs.queue_arn
-  dynamodb_table_name   = module.dynamodb.table_name
-  sns_topic_arn         = module.sns.topic_arn
-  opensearch_endpoint   = module.opensearch.domain_endpoint
-  neptune_endpoint      = module.neptune.cluster_endpoint
-  s3_bucket_name        = module.s3.bucket_name
-  layer_arn           = module.lambda_layer.layer_arn
-  langfuse_public_key = var.langfuse_public_key
-  langfuse_secret_key   = var.langfuse_secret_key
+  source                 = "./modules/lambda"
+  project_name           = var.project_name
+  environment            = var.environment
+  controller_role_arn    = module.iam.lambda_controller_role_arn
+  worker_role_arn        = module.iam.lambda_worker_role_arn
+  status_role_arn        = module.iam.lambda_status_role_arn
+  sqs_queue_url          = module.sqs.queue_url
+  sqs_queue_arn          = module.sqs.queue_arn
+  dynamodb_table_name    = module.dynamodb.table_name
+  sns_topic_arn          = module.sns.topic_arn
+  opensearch_endpoint    = module.opensearch.domain_endpoint
+  neptune_endpoint       = module.neptune.cluster_endpoint
+  s3_bucket_name         = module.s3.bucket_name
+  layer_arn              = module.lambda_layer.layer_arn
+  langfuse_public_key    = var.langfuse_public_key
+  langfuse_secret_key    = var.langfuse_secret_key
+  vpc_subnet_ids         = data.aws_subnets.default.ids
+  vpc_security_group_ids = [module.vpc_endpoints.lambda_security_group_id]
+  depends_on             = [module.vpc_endpoints]
 }
 
 module "neptune_replication" {

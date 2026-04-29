@@ -54,6 +54,14 @@ resource "aws_lambda_function" "worker" {
   memory_size      = 3008
   layers           = [var.layer_arn]
 
+  dynamic "vpc_config" {
+    for_each = length(var.vpc_subnet_ids) > 0 ? [1] : []
+    content {
+      subnet_ids         = var.vpc_subnet_ids
+      security_group_ids = var.vpc_security_group_ids
+    }
+  }
+
   environment {
     variables = {
       DYNAMODB_TABLE      = var.dynamodb_table_name

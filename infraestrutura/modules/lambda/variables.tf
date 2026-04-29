@@ -69,13 +69,25 @@ variable "neptune_endpoint" {
 variable "bedrock_model_id" {
   description = "Model ID do Amazon Bedrock para inferência Claude"
   type        = string
-  default     = "us.anthropic.claude-sonnet-4-6"
+  default     = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
 }
 
 variable "bedrock_region" {
-  description = "Região AWS do Bedrock (cross-region desde sa-east-1 — us-east-1 tem mais modelos disponíveis)"
+  description = "Região AWS do Bedrock (sa-east-1 — Sonnet 4.5 disponível via global inference profile)"
   type        = string
-  default     = "us-east-1"
+  default     = "sa-east-1"
+}
+
+variable "vpc_subnet_ids" {
+  description = "Subnet IDs para colocar o worker Lambda na VPC (acesso ao Neptune)"
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_security_group_ids" {
+  description = "Security group IDs para o worker Lambda na VPC"
+  type        = list(string)
+  default     = []
 }
 
 variable "langfuse_public_key" {

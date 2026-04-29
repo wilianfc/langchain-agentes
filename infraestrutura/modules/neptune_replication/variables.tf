@@ -25,3 +25,15 @@ variable "layer_arn" {
   description = "ARN da Lambda Layer com dependências Python"
   type        = string
 }
+
+variable "vpc_subnet_ids" {
+  description = "Subnet IDs para colocar o replicador na VPC (acesso ao Neptune)"
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_security_group_ids" {
+  description = "Security group IDs para o replicador na VPC"
+  type        = list(string)
+  default     = []
+}
