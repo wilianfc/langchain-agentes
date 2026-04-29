@@ -94,6 +94,18 @@ module "lambda_layer" {
   depends_on     = [module.s3]
 }
 
+module "neptune_proxy" {
+  source                 = "./modules/neptune_proxy"
+  project_name           = var.project_name
+  environment            = var.environment
+  neptune_endpoint       = module.neptune.cluster_endpoint
+  worker_role_arn        = module.iam.lambda_worker_role_arn
+  vpc_subnet_ids         = data.aws_subnets.default.ids
+  vpc_security_group_ids = [module.vpc_endpoints.lambda_security_group_id]
+  layer_arn              = module.lambda_layer.layer_arn
+  depends_on             = [module.neptune, module.vpc_endpoints, module.lambda_layer]
+}
+
 module "lambda" {
   source                 = "./modules/lambda"
   project_name           = var.project_name
@@ -107,13 +119,12 @@ module "lambda" {
   sns_topic_arn          = module.sns.topic_arn
   opensearch_endpoint    = module.opensearch.domain_endpoint
   neptune_endpoint       = module.neptune.cluster_endpoint
+  neptune_proxy_function = module.neptune_proxy.function_name
   s3_bucket_name         = module.s3.bucket_name
   layer_arn              = module.lambda_layer.layer_arn
   langfuse_public_key    = var.langfuse_public_key
   langfuse_secret_key    = var.langfuse_secret_key
-  vpc_subnet_ids         = data.aws_subnets.default.ids
-  vpc_security_group_ids = [module.vpc_endpoints.lambda_security_group_id]
-  depends_on             = [module.vpc_endpoints]
+  depends_on             = [module.neptune_proxy]
 }
 
 module "neptune_replication" {

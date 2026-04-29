@@ -99,6 +99,11 @@ resource "aws_iam_role_policy" "lambda_worker_policy" {
         Resource = "*"
       },
       {
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:*:*:function:${var.project_name}-neptune-proxy-${var.environment}"
+      },
+      {
         Effect = "Allow"
         Action = [
           "ec2:CreateNetworkInterface",

@@ -49,6 +49,7 @@ AWS_ACCOUNT_ID = os.environ.get("AWS_ACCOUNT_ID", "")
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "")
+NEPTUNE_PROXY_FUNCTION = os.environ.get("NEPTUNE_PROXY_FUNCTION", "")
 
 FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
 
@@ -180,30 +181,18 @@ def _extrair_texto(resp: Dict) -> str:
 
 
 def _neptune_client():
-    """Retorna cliente HTTP com SigV4 para consultas OpenCypher no Neptune."""
-    import botocore.auth
-    import botocore.awsrequest
-
-    class _NeptuneClient:
-        def __init__(self, endpoint: str, region: str):
-            self._url = f"https://{endpoint}:8182/openCypher"
-            self._endpoint = endpoint
-            self._region = region
-            self._creds = boto3.session.Session().get_credentials()
-
+    """Retorna cliente que invoca o Neptune Proxy Lambda (dentro da VPC)."""
+    class _NeptuneProxyClient:
         def query(self, cypher: str) -> List[Dict]:
-            body = json.dumps({"query": cypher}).encode("utf-8")
-            aws_req = botocore.awsrequest.AWSRequest(
-                method="POST", url=self._url, data=body,
-                headers={"Content-Type": "application/json", "Host": f"{self._endpoint}:8182"},
+            resp = boto3.client("lambda", region_name=AWS_REGION,
+                                config=Config(connect_timeout=5, read_timeout=25)).invoke(
+                FunctionName=NEPTUNE_PROXY_FUNCTION,
+                InvocationType="RequestResponse",
+                Payload=json.dumps({"cypher": cypher}),
             )
-            botocore.auth.SigV4Auth(self._creds, "neptune-db", self._region).add_auth(aws_req)
-            import requests as _requests
-            resp = _requests.post(self._url, data=body, headers=dict(aws_req.headers), timeout=10)
-            resp.raise_for_status()
-            return resp.json().get("results", [])
+            return json.loads(resp["Payload"].read()) or []
 
-    return _NeptuneClient(NEPTUNE_ENDPOINT, AWS_REGION)
+    return _NeptuneProxyClient()
 
 
 def _rag_graph(cluster_id: int, cliente_id: str, modo: str) -> str:
@@ -215,7 +204,7 @@ def _rag_graph(cluster_id: int, cliente_id: str, modo: str) -> str:
       - Cliente → Clientes similares (k-NN via cluster)
     Complementa o RAG BM25 do OpenSearch com raciocínio multi-hop.
     """
-    if not NEPTUNE_ENDPOINT:
+    if not NEPTUNE_PROXY_FUNCTION:
         return ""
     try:
         client = _neptune_client()

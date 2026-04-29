@@ -66,6 +66,12 @@ variable "neptune_endpoint" {
   default     = ""
 }
 
+variable "neptune_proxy_function" {
+  description = "Nome da função Lambda proxy para acesso ao Neptune (dentro da VPC)"
+  type        = string
+  default     = ""
+}
+
 variable "bedrock_model_id" {
   description = "Model ID do Amazon Bedrock para inferência Claude"
   type        = string

@@ -54,26 +54,19 @@ resource "aws_lambda_function" "worker" {
   memory_size      = 3008
   layers           = [var.layer_arn]
 
-  dynamic "vpc_config" {
-    for_each = length(var.vpc_subnet_ids) > 0 ? [1] : []
-    content {
-      subnet_ids         = var.vpc_subnet_ids
-      security_group_ids = var.vpc_security_group_ids
-    }
-  }
-
   environment {
     variables = {
-      DYNAMODB_TABLE      = var.dynamodb_table_name
-      SNS_TOPIC_ARN       = var.sns_topic_arn
-      S3_BUCKET           = var.s3_bucket_name
-      S3_PREFIX           = "clientes-agente/"
-      OPENSEARCH_ENDPOINT = var.opensearch_endpoint
-      NEPTUNE_ENDPOINT    = var.neptune_endpoint
-      BEDROCK_MODEL_ID    = var.bedrock_model_id
-      BEDROCK_REGION      = var.bedrock_region
-      LANGFUSE_PUBLIC_KEY = var.langfuse_public_key
-      LANGFUSE_SECRET_KEY = var.langfuse_secret_key
+      DYNAMODB_TABLE         = var.dynamodb_table_name
+      SNS_TOPIC_ARN          = var.sns_topic_arn
+      S3_BUCKET              = var.s3_bucket_name
+      S3_PREFIX              = "clientes-agente/"
+      OPENSEARCH_ENDPOINT    = var.opensearch_endpoint
+      NEPTUNE_ENDPOINT       = var.neptune_endpoint
+      NEPTUNE_PROXY_FUNCTION = var.neptune_proxy_function
+      BEDROCK_MODEL_ID       = var.bedrock_model_id
+      BEDROCK_REGION         = var.bedrock_region
+      LANGFUSE_PUBLIC_KEY    = var.langfuse_public_key
+      LANGFUSE_SECRET_KEY    = var.langfuse_secret_key
     }
   }
 
