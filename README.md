@@ -151,7 +151,7 @@ retriever.as_retriever()        ← interface de recuperação
 @tool buscar_conhecimento()     ← expõe o retriever como ferramenta do agente
 ```
 
-> **Em produção (AWS):** o FAISS local é substituído por **OpenSearch Serverless** e os embeddings HuggingFace por **Bedrock Titan Embeddings v2**. Ver [Parte 8 — RAG em produção](#parte-8--arquitetura-assíncrona-de-produção-aws).
+> **Em produção (AWS):** o FAISS local é substituído por **OpenSearch Service** (BM25 text search) e os embeddings HuggingFace por **Bedrock Titan Embeddings v2** (indexação local). Grafo de conhecimento via **Amazon Neptune** com retrieval OpenCypher. Ver [Parte 8 — RAG em produção](#parte-8--arquitetura-assíncrona-de-produção-aws) e [Parte 9 — GraphRAG com Neptune](#parte-9--graphrag-com-amazon-neptune).
 
 #### Import correto do text splitter
 
@@ -935,6 +935,107 @@ curl https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/status/req_abc123
 aws s3 cp meu_documento.pdf s3://meu-bucket-docs-rag/
 # → S3 Event aciona Lambda Ingestão automaticamente
 ```
+
+---
+
+## Parte 9 — GraphRAG com Amazon Neptune
+
+### Conceito
+
+**GraphRAG** combina busca vetorial/BM25 com recuperação em grafo de conhecimento. Permite raciocínio multi-hop que o BM25 isolado não consegue: "produtos adequados para clientes similares ao perfil X com inadimplência baixa".
+
+### Arquitetura de retrieval em 3 camadas
+
+```
+Pergunta
+  │
+  ├─ Camada 1: BM25 no OpenSearch (rápido, sem embedding)
+  │    └─ Documentos do segmento do cluster
+  │
+  ├─ Camada 2: Grafo replicado (índice neptune-graph-sync)
+  │    └─ Snapshot de nós Neptune → OpenSearch, BM25 sobre texto livre
+  │
+  └─ Camada 3: Neptune live (OpenCypher)
+       ├─ Hop 1: Segmento → Produtos recomendados
+       ├─ Hop 2: Segmento → Persona arquétipo
+       └─ Hop 2: Cliente → Clientes similares (k-NN por cluster)
+```
+
+### Esquema do grafo
+
+```cypher
+// Nós
+(:Segmento {cluster_id, nome, renda_media, score_medio, inadimplencia})
+(:Produto  {nome})
+(:Persona  {nome, ocupacao, contexto})
+(:Cliente  {id, cluster_id, score_credito, renda_mensal, idade})
+
+// Arestas
+(Segmento)-[:RECOMENDA]->(Produto)
+(Segmento)-[:TEM_PERSONA]->(Persona)
+(Cliente)-[:PERTENCE_A]->(Segmento)
+(Cliente)-[:SIMILAR_A]->(Cliente)   // k-NN top-3 intra-cluster
+```
+
+### Lambda em VPC: o problema de conectividade
+
+Neptune é VPC-only; OpenSearch tem endpoint público. Lambda não pode estar nos dois simultaneamente sem NAT Gateway. Solução com dois Lambdas:
+
+```
+Worker Lambda (fora da VPC)
+  ├─ OpenSearch: direto (endpoint público, SigV4)
+  ├─ Bedrock:    direto (endpoint público)
+  └─ Neptune:    via invoke() ──► Neptune Proxy Lambda (na VPC)
+                                      └─ Neptune: SigV4 botocore
+```
+
+### SigV4 para Neptune — quirks
+
+```python
+# Host obrigatório com porta (SigV4 exige para portas não-padrão)
+aws_req = botocore.awsrequest.AWSRequest(
+    method="POST", url=url, data=body,
+    headers={"Content-Type": "application/json", "Host": f"{endpoint}:8182"},
+)
+botocore.auth.SigV4Auth(creds, "neptune-db", region).add_auth(aws_req)
+
+# Parameters: JSON string dentro do JSON body (não dict!)
+payload["parameters"] = json.dumps(params)
+```
+
+### Populando o grafo
+
+```python
+# gerar_clustering.py → modelo_clustering_slim.pkl
+# seed_neptune_lambda.py → Lambda na VPC → Neptune
+
+import pickle, json, numpy as np
+
+with open("modelo_clustering_slim.pkl", "rb") as f:
+    model = pickle.load(f)
+
+# Exportar para JSON (Lambda recebe como event payload)
+model_data = {
+    "centroids": model["centroids"].tolist(),
+    "scale_mean": model["scale_mean"].tolist(),
+    "scale_std":  model["scale_std"].tolist(),
+    "features":   model["features"],
+    "perfis":     {k: {str(i): v for i, v in d.items()} for k, d in model["perfis"].items()},
+}
+```
+
+### Contexto gerado pelo GraphRAG
+
+```
+Produtos recomendados para 'Premium Conservador': Previdência PGBL,
+Tesouro Direto IPCA+, Consultoria de investimentos dedicada, Cartão Platinum.
+Persona arquétipo: Carlos (gerente de empresa, 52 anos). Patrimônio
+consolidado, foco em segurança e rentabilidade real acima da inflação.
+Clientes similares no grafo: Cliente GRAPH-C00-0007 (score 702, renda R$ 5.517);
+Cliente GRAPH-C00-0024 (score 709, renda R$ 4.535); ...
+```
+
+---
 
 ## Referências
 
