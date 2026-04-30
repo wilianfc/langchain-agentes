@@ -1,0 +1,133 @@
+@startuml graphrag_interaction
+
+title Agente Bancário GraphRAG — Diagrama de Interação\n<size:11>(AWS sa-east-1 | async SQS | 3 camadas RAG)</size>
+
+skinparam sequence {
+    ArrowColor       #2c3e50
+    ActorBorderColor #2c3e50
+    ParticipantBorderColor #2c3e50
+    ParticipantBackgroundColor #ecf0f1
+    BoxBackgroundColor #f0f4ff
+    GroupBackgroundColor #fffbe6
+    LifeLineBorderColor #aaa
+    LifeLineBackgroundColor #fefefe
+    NoteBackgroundColor #fffde7
+    NoteBorderColor #f0c040
+}
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam ArrowThickness 1.4
+
+actor       "Cliente / App"   as CLI
+participant "API Gateway\nHTTP API"       as APIGW  #d6eaf8
+participant "Controller\nLambda (30s)"   as CTRL   #d5f5e3
+queue       "SQS Queue\n(vis. 900s)"     as SQS    #fdebd0
+participant "Worker Lambda\n(fora da VPC · 900s · 3GB)" as WRK #e8daef
+
+box "OpenSearch (público · BM25)" #f0fff4
+    database "clientes-segmento-{cid}\nclientes-digital-twins\nneptune-graph-sync" as OS
+end box
+
+box "VPC default · sa-east-1" #fff8f0
+    participant "Neptune Proxy\nLambda (30s · 256MB)" as PROXY #ffe0b2
+    database    "Neptune\ndb.t3.medium · IAM auth\nOpenCypher :8182" as NEP #ffccbc
+end box
+
+participant "Bedrock\nClaude Sonnet 4.5\n(global inference profile)" as BED #fce4ec
+database    "DynamoDB\nlangchain-agent-requests" as DDB  #e8eaf6
+
+' ─────────────────────────────────────────────────────────────────
+== 1. Recebimento da requisição ==
+' ─────────────────────────────────────────────────────────────────
+
+CLI  -> APIGW : POST /query\n{cliente_id, dados_cliente,\n pergunta, modo}
+APIGW -> CTRL : event (proxy)
+CTRL -> DDB   : PutItem  status=PENDING
+CTRL -> SQS   : SendMessage {request_id, payload}
+CTRL --> APIGW : {request_id}
+APIGW --> CLI  : 202 {request_id}
+
+' ─────────────────────────────────────────────────────────────────
+== 2. Classificação K-Means (cold start: S3 → memória) ==
+' ─────────────────────────────────────────────────────────────────
+
+SQS  -> WRK  : trigger (até 900s)
+WRK  -> DDB  : PutItem  status=PROCESSING
+note right of WRK
+  <b>Modo segmento</b>: classificar dados_cliente\n  → cluster_id via K-Means (PKL slim S3)
+  <b>Modo persona</b>:  cluster_id direto ou classificar
+  <b>Modo twin</b>:     cluster_id + cliente_id
+end note
+
+' ─────────────────────────────────────────────────────────────────
+== 3. Retrieval RAG (3 camadas) ==
+' ─────────────────────────────────────────────────────────────────
+
+group Camada 1 — BM25 OpenSearch [_rag_segmento / _rag_twin / _rag_graph_sync]
+    WRK -> OS  : match {text: pergunta}\n+ filter {cluster_id | cliente_id.keyword}
+    OS --> WRK : contexto_bm25\n(perfil segmento OU perfil individual twin)
+end
+
+group Camada 2 — Neptune live via Proxy [_rag_graph → _neptune_client]
+    WRK -> PROXY : boto3.invoke()\nPayload: {cypher: query}
+
+    PROXY -> NEP : POST /openCypher  SigV4\nHost: endpoint:8182\nCypher #1 → Produtos
+    NEP --> PROXY : [{segmento, produtos[]}]
+
+    PROXY -> NEP : POST /openCypher  SigV4\nCypher #2 → Persona arquétipo
+    NEP --> PROXY : [{nome, ocupacao, contexto}]
+
+    alt modo == "twin"
+        PROXY -> NEP : POST /openCypher  SigV4\nCypher #3 → Clientes SIMILAR_A\n(k-NN top-3 intra-cluster)
+        NEP --> PROXY : [{similar_id, score, renda}]
+    end
+
+    PROXY --> WRK : contexto_graph\n(produtos + persona + similares)
+end
+
+note right of WRK
+  Camada 3 (neptune-graph-sync) atualmente\nvazia — replicator bloqueado por ausência\nde VPC endpoint "es" em sa-east-1
+end note
+
+WRK -> WRK : join(contexto_bm25, contexto_sync, contexto_graph)
+
+' ─────────────────────────────────────────────────────────────────
+== 4. Geração com LLM ==
+' ─────────────────────────────────────────────────────────────────
+
+WRK -> BED : Converse API\n[system_prompt]\n+ few-shot (2 turns por modo)\n+ "Contexto relevante:\\n{rag_context}\\n\\nPergunta: {q}"\nmaxTokens=2048
+BED --> WRK : texto gerado
+
+' ─────────────────────────────────────────────────────────────────
+== 5. Índice de confiabilidade ==
+' ─────────────────────────────────────────────────────────────────
+
+WRK -> WRK : _confiabilidade(\n  bm25, sync, graph, resposta\n)
+note right of WRK
+  <b>Cobertura de fontes (85%)</b>
+  opensearch_bm25  → +0.40
+  neptune_live     → +0.30
+  neptune_sync     → +0.15
+
+  <b>Sobreposição léxica (15%)</b>
+  overlap = |kw(ctx) ∩ kw(resp)| /
+            min(|kw(ctx)|, |kw(resp)|)
+  score += overlap × 0.15
+
+  <b>Nível</b>: alto ≥0.70 · medio ≥0.40 · baixo
+end note
+
+' ─────────────────────────────────────────────────────────────────
+== 6. Persistência e resposta ao cliente ==
+' ─────────────────────────────────────────────────────────────────
+
+WRK -> DDB : UpdateItem  status=COMPLETED\nresultado = {\n  resposta,\n  indice_confiabilidade: {\n    score, nivel,\n    fontes_ativas,\n    detalhes\n  }\n}
+
+CLI -> APIGW : GET /status/{request_id}\n(polling a cada ~3s)
+APIGW -> "Status\nLambda" as ST #d5f5e3
+ST  -> DDB  : GetItem {request_id}
+DDB --> ST  : item
+ST --> APIGW : 200 {status, resultado}
+APIGW --> CLI : resposta final +\nindice_confiabilidade
+
+@enduml
