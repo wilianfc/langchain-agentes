@@ -65,6 +65,7 @@ resource "aws_lambda_function" "worker" {
       NEPTUNE_PROXY_FUNCTION = var.neptune_proxy_function
       BEDROCK_MODEL_ID       = var.bedrock_model_id
       BEDROCK_REGION         = var.bedrock_region
+      ENABLE_LLM_JUDGE       = var.enable_llm_judge
       LANGFUSE_PUBLIC_KEY    = var.langfuse_public_key
       LANGFUSE_SECRET_KEY    = var.langfuse_secret_key
     }

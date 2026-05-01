@@ -96,6 +96,12 @@ variable "vpc_security_group_ids" {
   default     = []
 }
 
+variable "enable_llm_judge" {
+  description = "Ativa avaliação semântica LLM-as-judge em toda requisição (aumenta latência ~2s)"
+  type        = string
+  default     = "false"
+}
+
 variable "langfuse_public_key" {
   description = "Chave pública Langfuse para OTel (opcional)"
   type        = string

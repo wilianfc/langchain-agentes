@@ -53,7 +53,7 @@ resource "aws_security_group" "neptune" {
 resource "aws_neptune_cluster" "main" {
   cluster_identifier                  = "${var.project_name}-${var.environment}"
   engine                              = "neptune"
-  engine_version                      = "1.3.1.0"
+  engine_version                      = "1.3.2.1"
   neptune_subnet_group_name           = aws_neptune_subnet_group.main.name
   vpc_security_group_ids              = [aws_security_group.neptune.id]
   iam_database_authentication_enabled = true

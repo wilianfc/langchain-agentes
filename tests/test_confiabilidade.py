@@ -4,14 +4,17 @@ Testes unitários para o índice de confiabilidade do pipeline RAG.
 Cobre:
   - _palavras_chave: filtragem de stopwords e tokens curtos
   - _confiabilidade: scoring por cobertura de fontes e sobreposição léxica
+  - _avaliar_llm: LLM-as-judge (Bedrock mockado)
+  - documentos_knowledge: quarta fonte no índice de confiabilidade
 
 Para isolar as funções puras do worker sem depender de credenciais AWS,
 o módulo otel_config é substituído por um stub antes do import.
 """
+import json
 import os
 import sys
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.modules.setdefault("otel_config", MagicMock())
 
@@ -292,3 +295,102 @@ class TestCenariosReais:
         r = worker._confiabilidade(bm25_twin, "", graph_twin, resposta)
         assert r["nivel"] == "alto"
         assert r["detalhes"]["sobreposicao_lexica"] > 0.10
+
+
+class TestDocumentosKnowledge:
+    """Quarta fonte RAG: documentos-knowledge (+0.10 na cobertura)."""
+
+    def test_documentos_contribui_010(self):
+        r = worker._confiabilidade("", "", "", "resposta", documentos="Política investimentos 2025 fundos")
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(0.10)
+        assert r["fontes_ativas"] == ["documentos_knowledge"]
+
+    def test_documentos_mais_bm25(self):
+        r = worker._confiabilidade("perfil cliente renda mensal", "", "", "resposta",
+                                   documentos="Regulamento fundos tesouro")
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(0.50)
+        assert set(r["fontes_ativas"]) == {"opensearch_bm25", "documentos_knowledge"}
+
+    def test_todas_quatro_fontes_cobertura_095(self):
+        r = worker._confiabilidade(
+            "perfil segmento renda mensal",
+            "grafo replicado cluster",
+            "produtos neptune tesouro",
+            "resposta",
+            documentos="regulamento investimentos fundos",
+        )
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(0.95)
+        assert set(r["fontes_ativas"]) == {
+            "opensearch_bm25", "neptune_sync", "neptune_live", "documentos_knowledge"
+        }
+
+    def test_documentos_vazio_nao_conta(self):
+        r = worker._confiabilidade("bm25 texto", "", "", "resposta", documentos="")
+        assert "documentos_knowledge" not in r["fontes_ativas"]
+
+    def test_documentos_whitespace_nao_conta(self):
+        r = worker._confiabilidade("bm25 texto", "", "", "resposta", documentos="   \n\t")
+        assert "documentos_knowledge" not in r["fontes_ativas"]
+
+    def test_score_nao_excede_1_com_quatro_fontes(self):
+        ctx = "investimento tesouro previdência selic patrimônio " * 20
+        r = worker._confiabilidade(ctx, ctx, ctx, ctx, documentos=ctx)
+        assert r["score"] <= 1.0
+
+    def test_documentos_contribui_para_overlap(self):
+        docs = "investimento tesouro previdência selic patrimônio"
+        resposta = "recomendo investimento tesouro previdência para proteção patrimonial"
+        r_com = worker._confiabilidade("", "", "", resposta, documentos=docs)
+        r_sem = worker._confiabilidade("", "", "", resposta)
+        assert r_com["detalhes"]["sobreposicao_lexica"] > 0
+        assert r_sem["detalhes"]["sobreposicao_lexica"] == pytest.approx(0.0)
+
+
+class TestAvaliarLlm:
+    """_avaliar_llm: LLM-as-judge com Bedrock mockado."""
+
+    def _mock_bedrock_response(self, payload: dict) -> MagicMock:
+        mock_resp = MagicMock()
+        mock_resp["output"]["message"]["content"][0]["text"] = json.dumps(payload)
+        return mock_resp
+
+    def test_retorna_scores_e_media(self):
+        resposta_llm = {"relevancia": 8, "fidelidade": 7, "completude": 9,
+                        "raciocinio": "Resposta bem fundamentada no contexto RAG."}
+        with patch.object(worker._bedrock_client, "converse") as mock_converse:
+            mock_converse.return_value = {
+                "output": {"message": {"content": [{"text": json.dumps(resposta_llm)}]}}
+            }
+            r = worker._avaliar_llm("contexto rag aqui", "pergunta teste", "resposta gerada")
+
+        assert r["disponivel"] is True
+        assert r["relevancia"] == 8
+        assert r["fidelidade"] == 7
+        assert r["completude"] == 9
+        assert r["media"] == pytest.approx(8.0)
+        assert "raciocinio" in r
+
+    def test_media_calculada_corretamente(self):
+        resposta_llm = {"relevancia": 6, "fidelidade": 9, "completude": 3, "raciocinio": "x"}
+        with patch.object(worker._bedrock_client, "converse") as mock_converse:
+            mock_converse.return_value = {
+                "output": {"message": {"content": [{"text": json.dumps(resposta_llm)}]}}
+            }
+            r = worker._avaliar_llm("ctx", "q", "resp")
+
+        assert r["media"] == pytest.approx(6.0)
+
+    def test_retorna_disponivel_false_se_bedrock_falha(self):
+        with patch.object(worker._bedrock_client, "converse", side_effect=Exception("timeout")):
+            r = worker._avaliar_llm("contexto", "pergunta", "resposta")
+
+        assert r["disponivel"] is False
+
+    def test_retorna_disponivel_false_se_json_invalido(self):
+        with patch.object(worker._bedrock_client, "converse") as mock_converse:
+            mock_converse.return_value = {
+                "output": {"message": {"content": [{"text": "não é json válido"}]}}
+            }
+            r = worker._avaliar_llm("ctx", "q", "resp")
+
+        assert r["disponivel"] is False

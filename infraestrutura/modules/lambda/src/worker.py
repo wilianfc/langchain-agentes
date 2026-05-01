@@ -50,6 +50,7 @@ BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonne
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "")
 NEPTUNE_PROXY_FUNCTION = os.environ.get("NEPTUNE_PROXY_FUNCTION", "")
+ENABLE_LLM_JUDGE = os.environ.get("ENABLE_LLM_JUDGE", "false").lower() == "true"
 
 FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
 
@@ -150,6 +151,22 @@ def _rag_graph_sync(cluster_id: int, query: str, k: int = 3) -> str:
         return ""
 
 
+def _rag_documentos(query: str, k: int = 3) -> str:
+    """Consulta o índice documentos-knowledge (BM25 sem filtro de cluster)."""
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index="documentos-knowledge",
+            body={"query": {"match": {"text": query}}, "size": k},
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de documentos: %s", traceback.format_exc())
+        return ""
+
+
 def _rag_twin(cliente_id: str, query: str, k: int = 3) -> str:
     if not OPENSEARCH_ENDPOINT:
         return ""
@@ -195,11 +212,13 @@ def _palavras_chave(texto: str) -> set:
     }
 
 
-def _confiabilidade(bm25: str, sync: str, graph: str, resposta: str) -> Dict:
+def _confiabilidade(
+    bm25: str, sync: str, graph: str, resposta: str, documentos: str = ""
+) -> Dict:
     """
     Score de confiabilidade baseado em duas dimensões:
-      - Cobertura de fontes: quais camadas RAG entregaram conteúdo (85% do score)
-      - Sobreposição léxica: termos do contexto presentes na resposta (15%)
+      - Cobertura de fontes: quais camadas RAG entregaram conteúdo (até 0.85 do score)
+      - Sobreposição léxica: termos do contexto presentes na resposta (até 0.15)
     """
     fontes: List[str] = []
     cobertura = 0.0
@@ -213,8 +232,11 @@ def _confiabilidade(bm25: str, sync: str, graph: str, resposta: str) -> Dict:
     if sync.strip():
         fontes.append("neptune_sync")
         cobertura += 0.15
+    if documentos.strip():
+        fontes.append("documentos_knowledge")
+        cobertura += 0.10
 
-    contexto_total = " ".join(filter(None, [bm25, sync, graph]))
+    contexto_total = " ".join(filter(None, [bm25, sync, graph, documentos]))
     overlap = 0.0
     if contexto_total and resposta:
         ctx_kw = _palavras_chave(contexto_total)
@@ -240,6 +262,39 @@ def _confiabilidade(bm25: str, sync: str, graph: str, resposta: str) -> Dict:
         },
     }
 
+
+
+def _avaliar_llm(contexto_rag: str, pergunta: str, resposta: str) -> Dict:
+    """Avaliação semântica via segundo call Bedrock (LLM-as-judge)."""
+    try:
+        prompt = (
+            "Avalie a resposta abaixo em relação ao contexto RAG e à pergunta. "
+            "Responda APENAS com JSON válido, sem texto adicional.\n\n"
+            f"Contexto RAG:\n{contexto_rag[:2000]}\n\n"
+            f"Pergunta: {pergunta}\n\n"
+            f"Resposta: {resposta}\n\n"
+            "JSON esperado (scores de 1 a 10):\n"
+            '{"relevancia": <int>, "fidelidade": <int>, "completude": <int>, '
+            '"raciocinio": "<1 frase explicando o score>"}'
+        )
+        resp = _bedrock_client.converse(
+            modelId=BEDROCK_MODEL_ID,
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": 256},
+        )
+        texto = resp["output"]["message"]["content"][0]["text"]
+        avaliacao = json.loads(texto)
+        scores = [
+            int(avaliacao.get("relevancia", 0)),
+            int(avaliacao.get("fidelidade", 0)),
+            int(avaliacao.get("completude", 0)),
+        ]
+        avaliacao["media"] = round(sum(scores) / len(scores), 1)
+        avaliacao["disponivel"] = True
+        return avaliacao
+    except Exception:
+        log.warning("Erro na avaliação LLM-as-judge: %s", traceback.format_exc())
+        return {"disponivel": False}
 
 
 def _neptune_client():
@@ -511,73 +566,81 @@ def _chamar_claude(system: str, contexto_rag: str, pergunta: str, modo: str = "s
 
 
 
+def _maybe_avaliar(ic: Dict, avaliar: bool, contextos: List[str], pergunta: str, resultado: str) -> None:
+    if not avaliar:
+        return
+    ic["avaliacao_llm"] = _avaliar_llm("\n\n".join(filter(None, contextos)), pergunta, resultado)
+
+
+def _executar_twin(pergunta: str, dados: Dict, cliente_id: str, payload: Dict, avaliar: bool) -> str:
+    cluster_id = payload.get("cluster_id")
+    if cluster_id is None and dados:
+        cluster_id = _classificar(dados)
+    cluster_id = int(cluster_id) if cluster_id is not None else 0
+    b = _rag_twin(cliente_id, pergunta)
+    s = _rag_graph_sync(cluster_id, pergunta)
+    g = _rag_graph(cluster_id, cliente_id, "twin")
+    d = _rag_documentos(pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d]))
+    resultado = _chamar_claude(_system_twin(cliente_id, dados), contexto, pergunta, modo="twin")
+    ic = _confiabilidade(b, s, g, resultado, d)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d], pergunta, resultado)
+    return json.dumps({"cliente_id": cliente_id, "modo": "twin", "resposta": resultado,
+                       "indice_confiabilidade": ic}, ensure_ascii=False)
+
+
+def _executar_persona(pergunta: str, dados: Dict, payload: Dict, avaliar: bool) -> str:
+    cluster_id = payload.get("cluster_id")
+    if cluster_id is None:
+        if not dados:
+            raise ValueError("Modo 'persona' requer 'cluster_id' ou 'dados_cliente'.")
+        cluster_id = _classificar(dados)
+    cluster_id = int(cluster_id)
+    b = _rag_segmento(cluster_id, pergunta)
+    s = _rag_graph_sync(cluster_id, pergunta)
+    g = _rag_graph(cluster_id, "", "persona")
+    d = _rag_documentos(pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d]))
+    resultado = _chamar_claude(_system_persona(cluster_id), contexto, pergunta, modo="persona")
+    ic = _confiabilidade(b, s, g, resultado, d)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d], pergunta, resultado)
+    p = _perfil(cluster_id)
+    return json.dumps({"cluster_id": cluster_id, "segmento": p.get("segmento", ""),
+                       "persona_nome": p.get("persona_nome", ""), "modo": "persona",
+                       "resposta": resultado, "indice_confiabilidade": ic}, ensure_ascii=False)
+
+
+def _executar_segmento(pergunta: str, dados: Dict, cliente_id: str, avaliar: bool) -> str:
+    ausentes = set(FEATURES) - set(dados.keys())
+    if ausentes:
+        raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
+    cluster_id = _classificar(dados)
+    b = _rag_segmento(cluster_id, pergunta)
+    s = _rag_graph_sync(cluster_id, pergunta)
+    g = _rag_graph(cluster_id, cliente_id, "segmento")
+    d = _rag_documentos(pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d]))
+    resultado = _chamar_claude(_system_segmento(cluster_id), contexto, pergunta, modo="segmento")
+    ic = _confiabilidade(b, s, g, resultado, d)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d], pergunta, resultado)
+    p = _perfil(cluster_id)
+    return json.dumps({"cliente_id": cliente_id, "cluster_id": cluster_id,
+                       "segmento": p.get("segmento", ""), "modo": "segmento",
+                       "resposta": resultado, "indice_confiabilidade": ic}, ensure_ascii=False)
+
+
 def _executar(payload: Dict) -> str:
     pergunta: str = payload["pergunta"]
     modo: str = payload.get("modo", "segmento")
     dados: Dict = payload.get("dados_cliente", payload.get("dados", {}))
     cliente_id: str = payload.get("cliente_id", "")
+    avaliar: bool = ENABLE_LLM_JUDGE or bool(payload.get("avaliar"))
 
     if modo == "twin":
-        cluster_id = payload.get("cluster_id")
-        if cluster_id is None and dados:
-            cluster_id = _classificar(dados)
-        cluster_id = int(cluster_id) if cluster_id is not None else 0
-        contexto_bm25 = _rag_twin(cliente_id, pergunta)
-        contexto_sync = _rag_graph_sync(cluster_id, pergunta)
-        contexto_graph = _rag_graph(cluster_id, cliente_id, "twin")
-        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
-        system = _system_twin(cliente_id, dados)
-        resultado = _chamar_claude(system, contexto, pergunta, modo="twin")
-        return json.dumps({
-            "cliente_id": cliente_id,
-            "modo": "twin",
-            "resposta": resultado,
-            "indice_confiabilidade": _confiabilidade(contexto_bm25, contexto_sync, contexto_graph, resultado),
-        }, ensure_ascii=False)
-
+        return _executar_twin(pergunta, dados, cliente_id, payload, avaliar)
     if modo == "persona":
-        cluster_id = payload.get("cluster_id")
-        if cluster_id is None:
-            if not dados:
-                raise ValueError("Modo 'persona' requer 'cluster_id' ou 'dados_cliente'.")
-            cluster_id = _classificar(dados)
-        cluster_id = int(cluster_id)
-        contexto_bm25 = _rag_segmento(cluster_id, pergunta)
-        contexto_sync = _rag_graph_sync(cluster_id, pergunta)
-        contexto_graph = _rag_graph(cluster_id, "", "persona")
-        contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
-        system = _system_persona(cluster_id)
-        resultado = _chamar_claude(system, contexto, pergunta, modo="persona")
-        p = _perfil(cluster_id)
-        return json.dumps({
-            "cluster_id": cluster_id,
-            "segmento": p.get("segmento", ""),
-            "persona_nome": p.get("persona_nome", ""),
-            "modo": "persona",
-            "resposta": resultado,
-            "indice_confiabilidade": _confiabilidade(contexto_bm25, contexto_sync, contexto_graph, resultado),
-        }, ensure_ascii=False)
-
-    # modo segmento (default)
-    ausentes = set(FEATURES) - set(dados.keys())
-    if ausentes:
-        raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
-    cluster_id = _classificar(dados)
-    contexto_bm25 = _rag_segmento(cluster_id, pergunta)
-    contexto_sync = _rag_graph_sync(cluster_id, pergunta)
-    contexto_graph = _rag_graph(cluster_id, cliente_id, "segmento")
-    contexto = "\n\n".join(filter(None, [contexto_bm25, contexto_sync, contexto_graph]))
-    system = _system_segmento(cluster_id)
-    resultado = _chamar_claude(system, contexto, pergunta, modo="segmento")
-    p = _perfil(cluster_id)
-    return json.dumps({
-        "cliente_id": cliente_id,
-        "cluster_id": cluster_id,
-        "segmento": p.get("segmento", ""),
-        "modo": "segmento",
-        "resposta": resultado,
-        "indice_confiabilidade": _confiabilidade(contexto_bm25, contexto_sync, contexto_graph, resultado),
-    }, ensure_ascii=False)
+        return _executar_persona(pergunta, dados, payload, avaliar)
+    return _executar_segmento(pergunta, dados, cliente_id, avaliar)
 
 
 

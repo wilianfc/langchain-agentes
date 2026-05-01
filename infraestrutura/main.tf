@@ -122,6 +122,7 @@ module "lambda" {
   neptune_proxy_function = module.neptune_proxy.function_name
   s3_bucket_name         = module.s3.bucket_name
   layer_arn              = module.lambda_layer.layer_arn
+  enable_llm_judge       = "false"
   langfuse_public_key    = var.langfuse_public_key
   langfuse_secret_key    = var.langfuse_secret_key
   depends_on             = [module.neptune_proxy]
