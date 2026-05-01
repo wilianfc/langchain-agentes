@@ -107,25 +107,30 @@ module "neptune_proxy" {
 }
 
 module "lambda" {
-  source                 = "./modules/lambda"
-  project_name           = var.project_name
-  environment            = var.environment
-  controller_role_arn    = module.iam.lambda_controller_role_arn
-  worker_role_arn        = module.iam.lambda_worker_role_arn
-  status_role_arn        = module.iam.lambda_status_role_arn
-  sqs_queue_url          = module.sqs.queue_url
-  sqs_queue_arn          = module.sqs.queue_arn
-  dynamodb_table_name    = module.dynamodb.table_name
-  sns_topic_arn          = module.sns.topic_arn
-  opensearch_endpoint    = module.opensearch.domain_endpoint
-  neptune_endpoint       = module.neptune.cluster_endpoint
-  neptune_proxy_function = module.neptune_proxy.function_name
-  s3_bucket_name         = module.s3.bucket_name
-  layer_arn              = module.lambda_layer.layer_arn
-  enable_llm_judge       = "false"
-  langfuse_public_key    = var.langfuse_public_key
-  langfuse_secret_key    = var.langfuse_secret_key
-  depends_on             = [module.neptune_proxy]
+  source                     = "./modules/lambda"
+  project_name               = var.project_name
+  environment                = var.environment
+  controller_role_arn        = module.iam.lambda_controller_role_arn
+  worker_role_arn            = module.iam.lambda_worker_role_arn
+  status_role_arn            = module.iam.lambda_status_role_arn
+  ingester_role_arn          = module.iam.lambda_ingester_role_arn
+  sqs_queue_url              = module.sqs.queue_url
+  sqs_queue_arn              = module.sqs.queue_arn
+  dynamodb_table_name        = module.dynamodb.table_name
+  sns_topic_arn              = module.sns.topic_arn
+  opensearch_endpoint        = module.opensearch.domain_endpoint
+  neptune_endpoint           = module.neptune.cluster_endpoint
+  neptune_proxy_function     = module.neptune_proxy.function_name
+  s3_bucket_name             = module.s3.bucket_name
+  s3_bucket_name_for_trigger = module.s3.bucket_name
+  s3_bucket_arn              = module.s3.bucket_arn
+  layer_arn                  = module.lambda_layer.layer_arn
+  enable_llm_judge           = "false"
+  athena_database            = var.athena_database
+  athena_output_bucket       = var.athena_output_bucket
+  langfuse_public_key        = var.langfuse_public_key
+  langfuse_secret_key        = var.langfuse_secret_key
+  depends_on                 = [module.neptune_proxy]
 }
 
 module "neptune_replication" {
@@ -149,4 +154,7 @@ module "api_gateway" {
   controller_function_name = module.lambda.controller_function_name
   status_invoke_arn        = module.lambda.status_invoke_arn
   status_function_name     = module.lambda.status_function_name
+  ingester_invoke_arn      = module.lambda.ingester_invoke_arn
+  ingester_function_name   = module.lambda.ingester_function_name
+  depends_on               = [module.lambda]
 }

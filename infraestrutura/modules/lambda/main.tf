@@ -7,8 +7,14 @@ data "archive_file" "controller" {
 data "archive_file" "worker" {
   type        = "zip"
   source_dir  = "${path.module}/src"
-  excludes    = ["controller.py", "status.py"]
+  excludes    = ["controller.py", "status.py", "ingester.py"]
   output_path = "${path.module}/dist/lambda_worker.zip"
+}
+
+data "archive_file" "ingester" {
+  type        = "zip"
+  source_file = "${path.module}/src/ingester.py"
+  output_path = "${path.module}/dist/lambda_ingester.zip"
 }
 
 data "archive_file" "status" {
@@ -66,6 +72,8 @@ resource "aws_lambda_function" "worker" {
       BEDROCK_MODEL_ID       = var.bedrock_model_id
       BEDROCK_REGION         = var.bedrock_region
       ENABLE_LLM_JUDGE       = var.enable_llm_judge
+      ATHENA_DATABASE        = var.athena_database
+      ATHENA_OUTPUT_BUCKET   = var.athena_output_bucket
       LANGFUSE_PUBLIC_KEY    = var.langfuse_public_key
       LANGFUSE_SECRET_KEY    = var.langfuse_secret_key
     }
@@ -83,6 +91,60 @@ resource "aws_lambda_event_source_mapping" "sqs_worker" {
   batch_size                         = 1
   maximum_batching_window_in_seconds = 0
   function_response_types            = ["ReportBatchItemFailures"]
+}
+
+resource "aws_lambda_function" "ingester" {
+  function_name    = "${var.project_name}-ingester-${var.environment}"
+  role             = var.ingester_role_arn
+  package_type     = "Zip"
+  filename         = data.archive_file.ingester.output_path
+  source_code_hash = data.archive_file.ingester.output_base64sha256
+  handler          = "ingester.lambda_handler"
+  runtime          = "python3.11"
+  timeout          = 60
+  memory_size      = 512
+  layers           = [var.layer_arn]
+
+  environment {
+    variables = {
+      OPENSEARCH_ENDPOINT = var.opensearch_endpoint
+    }
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+resource "aws_lambda_permission" "allow_s3_ingester" {
+  count         = var.s3_bucket_arn != "" ? 1 : 0
+  statement_id  = "AllowS3Invoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.ingester.function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = var.s3_bucket_arn
+}
+
+resource "aws_s3_bucket_notification" "entrevistas_trigger" {
+  count  = var.s3_bucket_name_for_trigger != "" ? 1 : 0
+  bucket = var.s3_bucket_name_for_trigger
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.ingester.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "entrevistas/"
+    filter_suffix       = ".txt"
+  }
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.ingester.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "documentos/"
+    filter_suffix       = ".txt"
+  }
+
+  depends_on = [aws_lambda_permission.allow_s3_ingester]
 }
 
 resource "aws_lambda_function" "status" {

@@ -27,3 +27,13 @@ variable "status_function_name" {
   description = "Nome do Lambda Status"
   type        = string
 }
+
+variable "ingester_invoke_arn" {
+  description = "ARN de invocação do Lambda Ingester"
+  type        = string
+}
+
+variable "ingester_function_name" {
+  description = "Nome do Lambda Ingester"
+  type        = string
+}

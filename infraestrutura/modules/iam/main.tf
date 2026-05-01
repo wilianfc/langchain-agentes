@@ -106,10 +106,64 @@ resource "aws_iam_role_policy" "lambda_worker_policy" {
       {
         Effect = "Allow"
         Action = [
+          "athena:StartQueryExecution",
+          "athena:GetQueryExecution",
+          "athena:GetQueryResults",
+          "athena:StopQueryExecution",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["glue:GetTable", "glue:GetDatabase", "glue:GetPartitions"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "ec2:CreateNetworkInterface",
           "ec2:DescribeNetworkInterfaces",
           "ec2:DeleteNetworkInterface",
         ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "lambda_ingester" {
+  name = "${var.project_name}-lambda-ingester-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_ingester_policy" {
+  name = "ingester-policy"
+  role = aws_iam_role.lambda_ingester.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = ["${var.s3_bucket_arn}/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["es:ESHttp*"]
         Resource = "*"
       }
     ]

@@ -17,3 +17,13 @@ output "status_function_name" {
   description = "Nome do Lambda Status"
   value       = aws_lambda_function.status.function_name
 }
+
+output "ingester_invoke_arn" {
+  description = "ARN de invocação do Lambda Ingester"
+  value       = aws_lambda_function.ingester.invoke_arn
+}
+
+output "ingester_function_name" {
+  description = "Nome do Lambda Ingester"
+  value       = aws_lambda_function.ingester.function_name
+}

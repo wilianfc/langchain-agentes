@@ -38,6 +38,7 @@ BEDROCK_MODEL_ID = os.environ.get(
 )
 NEPTUNE_PROXY_FUNCTION = os.environ.get("NEPTUNE_PROXY_FUNCTION", "")
 DOC_INDEX = "documentos-knowledge"
+ENTREVISTAS_INDEX = "entrevistas-clientes"
 CHUNK_SIZE = 400  # palavras por chunk
 
 
@@ -161,52 +162,55 @@ def merge_neptune(entidades: list, relacionamentos: list) -> None:
             print(f"  [Neptune] Erro ao inserir rel '{orig}'->{dest}: {traceback.format_exc()[:200]}")
 
 
-def _garantir_indice(client: OpenSearch) -> None:
-    if client.indices.exists(index=DOC_INDEX):
+def _garantir_indice(client: OpenSearch, index: str) -> None:
+    if client.indices.exists(index=index):
         return
     client.indices.create(
-        index=DOC_INDEX,
+        index=index,
         body={
             "settings": {"number_of_shards": 1, "number_of_replicas": 1},
             "mappings": {
                 "properties": {
                     "text": {"type": "text"},
-                    "metadata": {
-                        "properties": {
-                            "titulo": {"type": "keyword"},
-                            "chunk_idx": {"type": "integer"},
-                        }
-                    },
+                    "metadata": {"type": "object", "dynamic": True},
                 }
             },
         },
     )
-    print(f"Indice '{DOC_INDEX}' criado.")
+    print(f"Indice '{index}' criado.")
 
 
-def indexar_chunks(titulo: str, chunks: list[str], client: OpenSearch) -> None:
+def indexar_chunks(titulo: str, chunks: list[str], client: OpenSearch,
+                   index: str = DOC_INDEX, meta_extra: dict = None) -> None:
     actions = [
         {
-            "_index": DOC_INDEX,
+            "_index": index,
             "_source": {
                 "text": chunk,
-                "metadata": {"titulo": titulo, "chunk_idx": i},
+                "metadata": {"titulo": titulo, "chunk_idx": i, **(meta_extra or {})},
             },
         }
         for i, chunk in enumerate(chunks)
     ]
     success, errors = helpers.bulk(client, actions, raise_on_error=False)
-    print(f"OpenSearch: {success} chunks inseridos | erros: {len(errors) if isinstance(errors, list) else errors}")
-    client.indices.refresh(index=DOC_INDEX)
+    print(f"OpenSearch [{index}]: {success} chunks inseridos | erros: {len(errors) if isinstance(errors, list) else errors}")
+    client.indices.refresh(index=index)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ingere documento no pipeline GraphRAG.")
+    parser = argparse.ArgumentParser(description="Ingere documento ou entrevista no pipeline GraphRAG.")
     parser.add_argument("--titulo", required=True, help="Título do documento")
+    parser.add_argument(
+        "--tipo", choices=["documento", "entrevista"], default="documento",
+        help="'documento' → documentos-knowledge; 'entrevista' → entrevistas-clientes",
+    )
+    parser.add_argument("--cliente-id", default="", help="ID do cliente (entrevistas individuais, modo twin)")
+    parser.add_argument("--cluster-id", type=int, default=None, help="Cluster ID (entrevistas de grupo, modo segmento/persona)")
+
     grupo = parser.add_mutually_exclusive_group(required=True)
     grupo.add_argument("--arquivo", help="Caminho para arquivo .txt")
     grupo.add_argument("--texto", help="Texto do documento diretamente")
-    parser.add_argument("--sem-grafo", action="store_true", help="Pular extração Neptune")
+    parser.add_argument("--sem-grafo", action="store_true", help="Pular extração de entidades Neptune")
     args = parser.parse_args()
 
     if args.arquivo:
@@ -215,27 +219,40 @@ def main():
     else:
         texto = args.texto
 
+    eh_entrevista = args.tipo == "entrevista"
+    index = ENTREVISTAS_INDEX if eh_entrevista else DOC_INDEX
+
+    meta_extra = {}
+    if eh_entrevista:
+        if args.cliente_id:
+            meta_extra["cliente_id"] = args.cliente_id
+        if args.cluster_id is not None:
+            meta_extra["cluster_id"] = args.cluster_id
+        if not meta_extra:
+            parser.error("Entrevistas requerem --cliente-id ou --cluster-id.")
+
+    print(f"Tipo: {args.tipo} | Índice: {index}")
     print(f"Documento: '{args.titulo}' ({len(texto)} chars)")
     chunks = chunkar(texto)
     print(f"Chunks gerados: {len(chunks)}")
 
     os_client = _os_client()
-    _garantir_indice(os_client)
+    _garantir_indice(os_client, index)
 
-    for i, chunk in enumerate(chunks):
-        print(f"\n--- Chunk {i + 1}/{len(chunks)} ---")
-        if not args.sem_grafo:
-            print("  Extraindo entidades via LLM...")
+    # Extração de entidades Neptune apenas para documentos (não entrevistas)
+    if not eh_entrevista and not args.sem_grafo:
+        for i, chunk in enumerate(chunks):
+            print(f"\n--- Chunk {i + 1}/{len(chunks)} — extraindo entidades ---")
             grafo = extrair_entidades(args.titulo, chunk)
             ents = grafo.get("entidades", [])
             rels = grafo.get("relacionamentos", [])
             print(f"  {len(ents)} entidades, {len(rels)} relacionamentos")
             merge_neptune(ents, rels)
 
-    indexar_chunks(args.titulo, chunks, os_client)
+    indexar_chunks(args.titulo, chunks, os_client, index=index, meta_extra=meta_extra)
 
-    total = os_client.count(index=DOC_INDEX)["count"]
-    print(f"\nTotal de chunks em '{DOC_INDEX}': {total}")
+    total = os_client.count(index=index)["count"]
+    print(f"\nTotal de chunks em '{index}': {total}")
 
 
 if __name__ == "__main__":

@@ -88,6 +88,65 @@ paths:
         uri: "${controller_invoke_arn}"
         payloadFormatVersion: "2.0"
 
+  /documentos:
+    post:
+      operationId: ingestDocumento
+      summary: Ingere um documento ou entrevista no pipeline RAG
+      description: |
+        Indexa o texto enviado no OpenSearch (índice `documentos-knowledge` ou `entrevistas-clientes`)
+        e opcionalmente extrai entidades para o grafo Neptune. Resposta síncrona (≤60s).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentoRequest"
+            examples:
+              entrevista_cliente:
+                summary: Entrevista individual (modo twin)
+                value:
+                  tipo: "entrevista"
+                  titulo: "Entrevista cliente C00042 — Q1 2025"
+                  cliente_id: "C00042"
+                  texto: "Prefiro resolver tudo pelo app. Gosto do cashback mas acho a taxa alta."
+              entrevista_segmento:
+                summary: Entrevista de grupo (modo segmento/persona)
+                value:
+                  tipo: "entrevista"
+                  titulo: "Focus group Premium Conservador — Março 2025"
+                  cluster_id: 0
+                  texto: "Os clientes valorizam segurança patrimonial e preferem canais presenciais."
+              documento:
+                summary: Documento de conhecimento (políticas, FAQ)
+                value:
+                  tipo: "documento"
+                  titulo: "Política de Investimentos 2025"
+                  texto: "O banco oferece Tesouro IPCA+ com liquidez diária para perfis conservadores..."
+      responses:
+        "200":
+          description: Documento indexado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentoResponse"
+        "400":
+          description: Payload inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Erro de indexação
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${ingester_invoke_arn}"
+        payloadFormatVersion: "2.0"
+
   /status/{request_id}:
     get:
       operationId: getStatus
@@ -238,6 +297,50 @@ components:
         erro:
           type: string
           description: Stack trace do erro (presente quando status=FAILED)
+
+    DocumentoRequest:
+      type: object
+      required:
+        - titulo
+        - texto
+      properties:
+        tipo:
+          type: string
+          enum: [entrevista, documento]
+          default: documento
+          description: "'entrevista' → índice entrevistas-clientes; 'documento' → documentos-knowledge"
+        titulo:
+          type: string
+          example: "Política de Investimentos 2025"
+        texto:
+          type: string
+          description: Conteúdo completo do documento ou transcrição da entrevista
+        cliente_id:
+          type: string
+          description: "ID do cliente — entrevistas individuais (modo twin)"
+          example: "C00042"
+        cluster_id:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: "Cluster de referência — entrevistas de grupo (modo segmento/persona)"
+          example: 0
+
+    DocumentoResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        chunks_indexados:
+          type: integer
+          example: 3
+        tipo:
+          type: string
+          example: "entrevista"
+        titulo:
+          type: string
+          example: "Entrevista cliente C00042"
 
     Error:
       type: object

@@ -5,6 +5,7 @@ resource "aws_apigatewayv2_api" "main" {
   body = templatefile("${path.module}/openapi.yaml", {
     controller_invoke_arn = var.controller_invoke_arn
     status_invoke_arn     = var.status_invoke_arn
+    ingester_invoke_arn   = var.ingester_invoke_arn
   })
 
   cors_configuration {
@@ -32,6 +33,14 @@ resource "aws_lambda_permission" "status" {
   statement_id  = "AllowAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = var.status_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "ingester" {
+  statement_id  = "AllowAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = var.ingester_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }

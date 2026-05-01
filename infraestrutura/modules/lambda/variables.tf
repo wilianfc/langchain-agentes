@@ -102,6 +102,35 @@ variable "enable_llm_judge" {
   default     = "false"
 }
 
+variable "athena_database" {
+  description = "Nome do banco de dados Athena com a tabela nps_feedbacks"
+  type        = string
+  default     = ""
+}
+
+variable "athena_output_bucket" {
+  description = "Nome do bucket S3 para resultados de queries Athena (sem s3://)"
+  type        = string
+  default     = ""
+}
+
+variable "ingester_role_arn" {
+  description = "ARN da role IAM do Lambda Ingester"
+  type        = string
+}
+
+variable "s3_bucket_name_for_trigger" {
+  description = "Nome do bucket S3 que dispara o ingester via notificação"
+  type        = string
+  default     = ""
+}
+
+variable "s3_bucket_arn" {
+  description = "ARN do bucket S3 (para permissão de invocação do ingester)"
+  type        = string
+  default     = ""
+}
+
 variable "langfuse_public_key" {
   description = "Chave pública Langfuse para OTel (opcional)"
   type        = string

@@ -394,3 +394,69 @@ class TestAvaliarLlm:
             r = worker._avaliar_llm("ctx", "q", "resp")
 
         assert r["disponivel"] is False
+
+
+class TestEntrevistasCorpus:
+    """Quinta fonte RAG: entrevistas-clientes (+0.10 na cobertura)."""
+
+    def test_entrevistas_contribui_010(self):
+        r = worker._confiabilidade("", "", "", "resposta", entrevistas="Prefiro o app, cashback importante")
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(0.10)
+        assert r["fontes_ativas"] == ["entrevistas_corpus"]
+
+    def test_entrevistas_mais_bm25(self):
+        r = worker._confiabilidade(
+            "perfil cliente renda mensal", "", "", "resposta",
+            entrevistas="Prefiro gestão digital sempre",
+        )
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(0.50)
+        assert set(r["fontes_ativas"]) == {"opensearch_bm25", "entrevistas_corpus"}
+
+    def test_entrevistas_mais_documentos(self):
+        r = worker._confiabilidade(
+            "", "", "", "resposta",
+            documentos="Política investimentos fundos tesouro",
+            entrevistas="Valoro segurança patrimonial previdência",
+        )
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(0.20)
+        assert set(r["fontes_ativas"]) == {"documentos_knowledge", "entrevistas_corpus"}
+
+    def test_cinco_fontes_cobertura_105_score_cap_1(self):
+        r = worker._confiabilidade(
+            "bm25 texto segmento",
+            "sync grafo replicado cluster",
+            "neptune produtos tesouro",
+            "resposta qualquer",
+            documentos="política regulamento investimentos",
+            entrevistas="voz cliente satisfação produto",
+        )
+        assert r["detalhes"]["cobertura_fontes"] == pytest.approx(1.05)
+        assert len(r["fontes_ativas"]) == 5
+        assert r["score"] <= 1.0
+
+    def test_entrevistas_vazio_nao_conta(self):
+        r = worker._confiabilidade("bm25 texto", "", "", "resposta", entrevistas="")
+        assert "entrevistas_corpus" not in r["fontes_ativas"]
+
+    def test_entrevistas_whitespace_nao_conta(self):
+        r = worker._confiabilidade("bm25 texto", "", "", "resposta", entrevistas="   \n\t")
+        assert "entrevistas_corpus" not in r["fontes_ativas"]
+
+    def test_entrevistas_contribui_para_overlap_lexica(self):
+        entrevistas = "investimento tesouro previdência selic patrimônio"
+        resposta = "recomendo investimento tesouro previdência selic"
+        r_com = worker._confiabilidade("", "", "", resposta, entrevistas=entrevistas)
+        r_sem = worker._confiabilidade("", "", "", resposta)
+        assert r_com["detalhes"]["sobreposicao_lexica"] > 0
+        assert r_sem["detalhes"]["sobreposicao_lexica"] == pytest.approx(0.0)
+
+    def test_score_nao_excede_1_cinco_fontes_maximo(self):
+        ctx = "investimento tesouro previdência selic patrimônio " * 20
+        r = worker._confiabilidade(ctx, ctx, ctx, ctx, documentos=ctx, entrevistas=ctx)
+        assert r["score"] <= 1.0
+
+    def test_estrutura_com_entrevistas_completa(self):
+        r = worker._confiabilidade("bm25", "", "", "resposta", entrevistas="entrevista cliente")
+        assert set(r.keys()) == {"score", "nivel", "fontes_ativas", "detalhes"}
+        assert isinstance(r["fontes_ativas"], list)
+        assert "entrevistas_corpus" in r["fontes_ativas"]

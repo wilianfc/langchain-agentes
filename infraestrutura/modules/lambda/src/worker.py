@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import pickle
+import time
 import traceback
 from datetime import datetime, timezone
 from io import BytesIO
@@ -37,6 +38,7 @@ _config = Config(connect_timeout=5, read_timeout=30)
 _dynamodb = boto3.resource("dynamodb", config=_config)
 _sns = boto3.client("sns", config=_config)
 _s3 = boto3.client("s3", config=_config)
+_athena = boto3.client("athena", config=_config)
 
 # ── Variáveis de ambiente ──────────────────────────────────────────────────────
 TABLE_NAME = os.environ["DYNAMODB_TABLE"]
@@ -51,6 +53,8 @@ BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "")
 NEPTUNE_PROXY_FUNCTION = os.environ.get("NEPTUNE_PROXY_FUNCTION", "")
 ENABLE_LLM_JUDGE = os.environ.get("ENABLE_LLM_JUDGE", "false").lower() == "true"
+ATHENA_DATABASE = os.environ.get("ATHENA_DATABASE", "")
+ATHENA_OUTPUT_BUCKET = os.environ.get("ATHENA_OUTPUT_BUCKET", "")
 
 FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
 
@@ -167,6 +171,153 @@ def _rag_documentos(query: str, k: int = 3) -> str:
         return ""
 
 
+def _rag_entrevistas(cluster_id: int, cliente_id: str, modo: str, query: str, k: int = 3) -> str:
+    """Corpus de entrevistas qualitativas.
+    Modo twin: tenta match exato por cliente_id, cai para cluster se vazio.
+    Modos segmento/persona: filtra por cluster_id.
+    """
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        if modo == "twin" and cliente_id:
+            resp = client.search(
+                index="entrevistas-clientes",
+                body={
+                    "query": {
+                        "bool": {
+                            "must": {"match": {"text": query}},
+                            "filter": {"term": {"metadata.cliente_id.keyword": cliente_id}},
+                        }
+                    },
+                    "size": k,
+                },
+            )
+            texto = _extrair_texto(resp)
+            if texto:
+                return texto
+        resp = client.search(
+            index="entrevistas-clientes",
+            body={
+                "query": {
+                    "bool": {
+                        "must": {"match": {"text": query}},
+                        "filter": {"term": {"metadata.cluster_id": cluster_id}},
+                    }
+                },
+                "size": k,
+            },
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de entrevistas (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
+def _consultar_athena_nps(tipo: str, identificador: str, produtos: List[str] = None) -> str:
+    """Executa query Athena para buscar elogios/críticas NPS do cliente ou segmento."""
+    if not ATHENA_DATABASE or not ATHENA_OUTPUT_BUCKET:
+        return "Dados de feedback NPS não configurados."
+    try:
+        filtro = (f"cliente_id = '{identificador}'" if tipo == "cliente"
+                  else f"cluster_id = {identificador}")
+        if produtos:
+            lista = ", ".join(f"'{p}'" for p in produtos)
+            filtro += f" AND produto IN ({lista})"
+        sql = (
+            f"SELECT sentimento, produto, comentario, data_feedback "
+            f"FROM {ATHENA_DATABASE}.nps_feedbacks "
+            f"WHERE {filtro} "
+            f"ORDER BY data_feedback DESC LIMIT 20"
+        )
+        exec_id = _athena.start_query_execution(
+            QueryString=sql,
+            ResultConfiguration={"OutputLocation": f"s3://{ATHENA_OUTPUT_BUCKET}/athena-nps/"},
+        )["QueryExecutionId"]
+
+        for _ in range(30):
+            state = _athena.get_query_execution(
+                QueryExecutionId=exec_id)["QueryExecution"]["Status"]["State"]
+            if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
+                break
+            time.sleep(1)
+
+        if state != "SUCCEEDED":
+            return "Consulta NPS indisponível no momento."
+
+        rows = _athena.get_query_results(QueryExecutionId=exec_id)["ResultSet"]["Rows"][1:]
+        if not rows:
+            return ""
+
+        def _celula(row, idx):
+            return row["Data"][idx].get("VarCharValue", "")
+
+        elogios = [r for r in rows if _celula(r, 0) == "promotor"]
+        detratores = [r for r in rows if _celula(r, 0) == "detrator"]
+        blocos: List[str] = []
+        if elogios:
+            itens = "; ".join(
+                f'"{_celula(r, 2)}" ({_celula(r, 1)})' for r in elogios[:5]
+            )
+            blocos.append(f"Elogios (promotores): {itens}.")
+        if detratores:
+            itens = "; ".join(
+                f'"{_celula(r, 2)}" ({_celula(r, 1)})' for r in detratores[:5]
+            )
+            blocos.append(f"Críticas (detratores): {itens}.")
+        return "\n".join(blocos)
+    except Exception:
+        log.warning("Erro Athena NPS: %s", traceback.format_exc())
+        return "Dados de feedback não disponíveis."
+
+
+_NPS_TOOL_CONFIG: Optional[Dict] = (
+    {
+        "tools": [
+            {
+                "toolSpec": {
+                    "name": "consultar_feedback_nps",
+                    "description": (
+                        "Consulta elogios (promotores NPS≥9) e críticas (detratores NPS≤6) "
+                        "de clientes sobre produtos bancários no data warehouse. Use quando "
+                        "a pergunta envolver satisfação, opiniões, reclamações, elogios ou "
+                        "avaliação de produtos específicos."
+                    ),
+                    "inputSchema": {
+                        "json": {
+                            "type": "object",
+                            "properties": {
+                                "tipo_consulta": {
+                                    "type": "string",
+                                    "enum": ["cliente", "segmento"],
+                                    "description": (
+                                        "'cliente' para modo twin (cliente_id), "
+                                        "'segmento' para persona/segmento (cluster_id)"
+                                    ),
+                                },
+                                "identificador": {
+                                    "type": "string",
+                                    "description": "cliente_id (ex: 'C001') ou cluster_id como string (ex: '0')",
+                                },
+                                "produtos": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Filtrar por produtos específicos (opcional)",
+                                },
+                            },
+                            "required": ["tipo_consulta", "identificador"],
+                        }
+                    },
+                }
+            }
+        ],
+        "toolChoice": {"auto": {}},
+    }
+    if ATHENA_DATABASE
+    else None
+)
+
+
 def _rag_twin(cliente_id: str, query: str, k: int = 3) -> str:
     if not OPENSEARCH_ENDPOINT:
         return ""
@@ -213,11 +364,12 @@ def _palavras_chave(texto: str) -> set:
 
 
 def _confiabilidade(
-    bm25: str, sync: str, graph: str, resposta: str, documentos: str = ""
+    bm25: str, sync: str, graph: str, resposta: str,
+    documentos: str = "", entrevistas: str = ""
 ) -> Dict:
     """
     Score de confiabilidade baseado em duas dimensões:
-      - Cobertura de fontes: quais camadas RAG entregaram conteúdo (até 0.85 do score)
+      - Cobertura de fontes: quais camadas RAG entregaram conteúdo (até 0.95 do score)
       - Sobreposição léxica: termos do contexto presentes na resposta (até 0.15)
     """
     fontes: List[str] = []
@@ -235,8 +387,11 @@ def _confiabilidade(
     if documentos.strip():
         fontes.append("documentos_knowledge")
         cobertura += 0.10
+    if entrevistas.strip():
+        fontes.append("entrevistas_corpus")
+        cobertura += 0.10
 
-    contexto_total = " ".join(filter(None, [bm25, sync, graph, documentos]))
+    contexto_total = " ".join(filter(None, [bm25, sync, graph, documentos, entrevistas]))
     overlap = 0.0
     if contexto_total and resposta:
         ctx_kw = _palavras_chave(contexto_total)
@@ -542,27 +697,59 @@ def _fewshot(modo: str) -> List[Dict]:
     return []
 
 
-def _chamar_claude(system: str, contexto_rag: str, pergunta: str, modo: str = "segmento") -> str:
-    conteudo = pergunta
-    if contexto_rag:
-        conteudo = f"Contexto relevante:\n{contexto_rag}\n\nPergunta: {pergunta}"
+def _despachar_tool(tool: Dict) -> str:
+    if tool["name"] == "consultar_feedback_nps":
+        inp = tool["input"]
+        return _consultar_athena_nps(
+            inp["tipo_consulta"], inp["identificador"], inp.get("produtos")
+        )
+    return "Ferramenta não reconhecida."
 
-    # Converte few-shot turns para o formato Converse API (content como lista de blocos)
-    converse_messages = []
-    for turn in _fewshot(modo):
-        converse_messages.append({
-            "role": turn["role"],
-            "content": [{"text": turn["content"]}],
+
+def _montar_tool_results(output_content: List[Dict]) -> List[Dict]:
+    results = []
+    for block in output_content:
+        if "toolUse" not in block:
+            continue
+        tool = block["toolUse"]
+        texto = _despachar_tool(tool) or "Sem dados disponíveis."
+        results.append({
+            "toolResult": {
+                "toolUseId": tool["toolUseId"],
+                "content": [{"text": texto}],
+            }
         })
-    converse_messages.append({"role": "user", "content": [{"text": conteudo}]})
+    return results
 
-    resp = _bedrock_client.converse(
-        modelId=BEDROCK_MODEL_ID,
-        system=[{"text": system}],
-        messages=converse_messages,
-        inferenceConfig={"maxTokens": 2048},
-    )
-    return resp["output"]["message"]["content"][0]["text"]
+
+def _chamar_claude(system: str, contexto_rag: str, pergunta: str, modo: str = "segmento") -> str:
+    """Invoca Claude via Converse API com loop agentic tool_use para NPS Athena."""
+    conteudo = (f"Contexto relevante:\n{contexto_rag}\n\nPergunta: {pergunta}"
+                if contexto_rag else pergunta)
+
+    msgs = [{"role": t["role"], "content": [{"text": t["content"]}]} for t in _fewshot(modo)]
+    msgs.append({"role": "user", "content": [{"text": conteudo}]})
+
+    kwargs: Dict = {
+        "modelId": BEDROCK_MODEL_ID,
+        "system": [{"text": system}],
+        "inferenceConfig": {"maxTokens": 2048},
+    }
+    if _NPS_TOOL_CONFIG:
+        kwargs["toolConfig"] = _NPS_TOOL_CONFIG
+
+    for _ in range(6):  # máx 5 round-trips tool_use
+        resp = _bedrock_client.converse(**kwargs, messages=msgs)
+        output_msg = resp["output"]["message"]
+        msgs.append(output_msg)
+
+        if resp["stopReason"] != "tool_use":
+            return next((b["text"] for b in output_msg["content"] if "text" in b), "")
+
+        tool_results = _montar_tool_results(output_msg["content"])
+        msgs.append({"role": "user", "content": tool_results})
+
+    return ""
 
 
 
@@ -581,10 +768,11 @@ def _executar_twin(pergunta: str, dados: Dict, cliente_id: str, payload: Dict, a
     s = _rag_graph_sync(cluster_id, pergunta)
     g = _rag_graph(cluster_id, cliente_id, "twin")
     d = _rag_documentos(pergunta)
-    contexto = "\n\n".join(filter(None, [b, s, g, d]))
+    e = _rag_entrevistas(cluster_id, cliente_id, "twin", pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d, e]))
     resultado = _chamar_claude(_system_twin(cliente_id, dados), contexto, pergunta, modo="twin")
-    ic = _confiabilidade(b, s, g, resultado, d)
-    _maybe_avaliar(ic, avaliar, [b, s, g, d], pergunta, resultado)
+    ic = _confiabilidade(b, s, g, resultado, d, e)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d, e], pergunta, resultado)
     return json.dumps({"cliente_id": cliente_id, "modo": "twin", "resposta": resultado,
                        "indice_confiabilidade": ic}, ensure_ascii=False)
 
@@ -600,10 +788,11 @@ def _executar_persona(pergunta: str, dados: Dict, payload: Dict, avaliar: bool) 
     s = _rag_graph_sync(cluster_id, pergunta)
     g = _rag_graph(cluster_id, "", "persona")
     d = _rag_documentos(pergunta)
-    contexto = "\n\n".join(filter(None, [b, s, g, d]))
+    e = _rag_entrevistas(cluster_id, "", "persona", pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d, e]))
     resultado = _chamar_claude(_system_persona(cluster_id), contexto, pergunta, modo="persona")
-    ic = _confiabilidade(b, s, g, resultado, d)
-    _maybe_avaliar(ic, avaliar, [b, s, g, d], pergunta, resultado)
+    ic = _confiabilidade(b, s, g, resultado, d, e)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d, e], pergunta, resultado)
     p = _perfil(cluster_id)
     return json.dumps({"cluster_id": cluster_id, "segmento": p.get("segmento", ""),
                        "persona_nome": p.get("persona_nome", ""), "modo": "persona",
@@ -619,10 +808,11 @@ def _executar_segmento(pergunta: str, dados: Dict, cliente_id: str, avaliar: boo
     s = _rag_graph_sync(cluster_id, pergunta)
     g = _rag_graph(cluster_id, cliente_id, "segmento")
     d = _rag_documentos(pergunta)
-    contexto = "\n\n".join(filter(None, [b, s, g, d]))
+    e = _rag_entrevistas(cluster_id, cliente_id, "segmento", pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d, e]))
     resultado = _chamar_claude(_system_segmento(cluster_id), contexto, pergunta, modo="segmento")
-    ic = _confiabilidade(b, s, g, resultado, d)
-    _maybe_avaliar(ic, avaliar, [b, s, g, d], pergunta, resultado)
+    ic = _confiabilidade(b, s, g, resultado, d, e)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d, e], pergunta, resultado)
     p = _perfil(cluster_id)
     return json.dumps({"cliente_id": cliente_id, "cluster_id": cluster_id,
                        "segmento": p.get("segmento", ""), "modo": "segmento",

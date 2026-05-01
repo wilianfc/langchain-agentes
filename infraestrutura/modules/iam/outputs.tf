@@ -17,3 +17,8 @@ output "lambda_worker_role_id" {
   description = "ID da role do Lambda Worker (para políticas inline de outros módulos)"
   value       = aws_iam_role.lambda_worker.id
 }
+
+output "lambda_ingester_role_arn" {
+  description = "ARN da role do Lambda Ingester"
+  value       = aws_iam_role.lambda_ingester.arn
+}

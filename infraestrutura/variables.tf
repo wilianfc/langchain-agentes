@@ -42,3 +42,15 @@ variable "langfuse_secret_key" {
   default     = ""
   sensitive   = true
 }
+
+variable "athena_database" {
+  description = "Nome do banco de dados Athena com a tabela nps_feedbacks (vazio desativa NPS tool_use)"
+  type        = string
+  default     = ""
+}
+
+variable "athena_output_bucket" {
+  description = "Nome do bucket S3 para resultados de queries Athena (sem s3://)"
+  type        = string
+  default     = ""
+}
