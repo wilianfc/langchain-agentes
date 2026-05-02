@@ -1,0 +1,376 @@
+\babel@toc {brazil}{}\relax 
+\contentsline {chapter}{Pref\'acio}{i}{chapter*.1}%
+\contentsline {chapter}{\numberline {1}Fundamentos de IA e Modelos de Linguagem de Grande Escala}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Escopo do cap\'itulo}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Objetivos de aprendizagem}{1}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Conceitos te\'oricos}{2}{section.1.3}%
+\contentsline {subsection}{\numberline {1.3.1}Arquitetura Transformer}{2}{subsection.1.3.1}%
+\contentsline {subsection}{\numberline {1.3.2}Tokeniza\c {c}\~ao}{3}{subsection.1.3.2}%
+\contentsline {subsection}{\numberline {1.3.3}Janela de Contexto}{3}{subsection.1.3.3}%
+\contentsline {subsection}{\numberline {1.3.4}Par\^ametros de Amostragem}{3}{subsection.1.3.4}%
+\contentsline {section}{\numberline {1.4}Implementa\c {c}\~ao orientada por passos}{4}{section.1.4}%
+\contentsline {subsection}{\numberline {1.4.1}Passo 1 --- Configura\c {c}\~ao das credenciais AWS}{4}{subsection.1.4.1}%
+\contentsline {subsection}{\numberline {1.4.2}Passo 2 --- Primeira chamada ao modelo}{4}{subsection.1.4.2}%
+\contentsline {subsection}{\numberline {1.4.3}Passo 3 --- Engenharia de \textit {prompts}}{5}{subsection.1.4.3}%
+\contentsline {subsection}{\numberline {1.4.4}Passo 4 --- T\'ecnica \textit {few-shot}}{6}{subsection.1.4.4}%
+\contentsline {section}{\numberline {1.5}Plano de testes do cap\'itulo}{6}{section.1.5}%
+\contentsline {subsection}{\numberline {1.5.1}Teste funcional}{6}{subsection.1.5.1}%
+\contentsline {subsection}{\numberline {1.5.2}Teste de desempenho}{6}{subsection.1.5.2}%
+\contentsline {subsection}{\numberline {1.5.3}Teste de qualidade de resposta}{7}{subsection.1.5.3}%
+\contentsline {section}{\numberline {1.6}Crit\'erios de aceite}{7}{section.1.6}%
+\contentsline {section}{\numberline {1.7}Espa\c {c}o para expans\~ao iterativa}{7}{section.1.7}%
+\contentsline {chapter}{\numberline {2}Ambiente, Ferramentas e Reprodutibilidade}{8}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Escopo do cap\'itulo}{8}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Objetivos de aprendizagem}{8}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Conceitos e prerrequisitos}{9}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Vers\~oes e depend\^encias}{9}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Estrutura do reposit\'orio}{9}{subsection.2.3.2}%
+\contentsline {section}{\numberline {2.4}Implementa\c {c}\~ao orientada por passos}{10}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}Passo 1 --- Clonar o reposit\'orio e criar o ambiente virtual}{10}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}Passo 2 --- Configurar credenciais AWS}{10}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}Passo 3 --- Provisionar a infraestrutura com Terraform}{11}{subsection.2.4.3}%
+\contentsline {subsection}{\numberline {2.4.4}Passo 4 --- Executar os notebooks}{11}{subsection.2.4.4}%
+\contentsline {section}{\numberline {2.5}Plano de testes do cap\'itulo}{12}{section.2.5}%
+\contentsline {subsection}{\numberline {2.5.1}Teste funcional}{12}{subsection.2.5.1}%
+\contentsline {subsection}{\numberline {2.5.2}Teste de desempenho}{12}{subsection.2.5.2}%
+\contentsline {subsection}{\numberline {2.5.3}Teste de qualidade}{12}{subsection.2.5.3}%
+\contentsline {section}{\numberline {2.6}Crit\'erios de aceite}{12}{section.2.6}%
+\contentsline {section}{\numberline {2.7}Espa\c {c}o para expans\~ao iterativa}{13}{section.2.7}%
+\contentsline {chapter}{\numberline {3}Agentes com LangGraph e Mem\'oria}{14}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Pr\'e-requisitos}{14}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Escopo do cap\'itulo}{14}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Objetivos de aprendizagem}{15}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Conceitos te\'oricos}{15}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Grafo de estados e n\'os de processamento}{15}{subsection.3.4.1}%
+\contentsline {subsection}{\numberline {3.4.2}Ciclo ReAct}{15}{subsection.3.4.2}%
+\contentsline {subsection}{\numberline {3.4.3}Persist\^encia de estado com \texttt {MemorySaver}}{16}{subsection.3.4.3}%
+\contentsline {section}{\numberline {3.5}Implementa\c {c}\~ao orientada por passos}{16}{section.3.5}%
+\contentsline {subsection}{\numberline {3.5.1}Passo 1 --- Definir as ferramentas do agente}{16}{subsection.3.5.1}%
+\contentsline {subsection}{\numberline {3.5.2}Passo 2 --- Construir o grafo ReAct}{17}{subsection.3.5.2}%
+\contentsline {subsection}{\numberline {3.5.3}Passo 3 --- Invocar o agente com persist\^encia de contexto}{18}{subsection.3.5.3}%
+\contentsline {subsection}{\numberline {3.5.4}Passo 4 --- Integrar mem\'oria vetorial FAISS}{18}{subsection.3.5.4}%
+\contentsline {section}{\numberline {3.6}Padr\~oes alternativos de agente}{19}{section.3.6}%
+\contentsline {subsection}{\numberline {3.6.1}Plan-and-Execute}{19}{subsection.3.6.1}%
+\contentsline {subsection}{\numberline {3.6.2}Reflexion}{21}{subsection.3.6.2}%
+\contentsline {subsection}{\numberline {3.6.3}Multi-Agent Supervisor}{23}{subsection.3.6.3}%
+\contentsline {section}{\numberline {3.7}Plano de testes do cap\'itulo}{24}{section.3.7}%
+\contentsline {subsection}{\numberline {3.7.1}Teste funcional}{24}{subsection.3.7.1}%
+\contentsline {subsection}{\numberline {3.7.2}Teste de desempenho}{24}{subsection.3.7.2}%
+\contentsline {subsection}{\numberline {3.7.3}Teste de qualidade de resposta}{24}{subsection.3.7.3}%
+\contentsline {section}{\numberline {3.8}Crit\'erios de aceite}{25}{section.3.8}%
+\contentsline {section}{\numberline {3.9}Autoavalia\c {c}\~ao}{25}{section.3.9}%
+\contentsline {paragraph}{Gabarito comentado.}{25}{section*.6}%
+\contentsline {section}{\numberline {3.10}Quest\~ao para reflex\~ao}{26}{section.3.10}%
+\contentsline {section}{\numberline {3.11}Resumo}{26}{section.3.11}%
+\contentsline {section}{\numberline {3.12}Para saber mais}{27}{section.3.12}%
+\contentsline {section}{\numberline {3.13}Espa\c {c}o para expans\~ao iterativa}{27}{section.3.13}%
+\contentsline {chapter}{\numberline {4}Tools, Skills e MCP}{28}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Pr\'e-requisitos}{28}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Escopo do cap\'itulo}{28}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Objetivos de aprendizagem}{29}{section.4.3}%
+\contentsline {section}{\numberline {4.4}Conceitos te\'oricos}{29}{section.4.4}%
+\contentsline {subsection}{\numberline {4.4.1}Tools nativas: fun\c {c}\~oes como a\c {c}\~oes do agente}{29}{subsection.4.4.1}%
+\contentsline {subsection}{\numberline {4.4.2}Skills: tools com contexto de neg\'ocio}{30}{subsection.4.4.2}%
+\contentsline {subsection}{\numberline {4.4.3}MCP: protocolo padronizado para ferramentas}{30}{subsection.4.4.3}%
+\contentsline {section}{\numberline {4.5}Implementa\c {c}\~ao orientada por passos}{30}{section.4.5}%
+\contentsline {subsection}{\numberline {4.5.1}Passo 1 --- Criar tools nativas e registrar no agente}{30}{subsection.4.5.1}%
+\contentsline {subsection}{\numberline {4.5.2}Passo 2 --- Implementar servidor MCP com transporte stdio}{31}{subsection.4.5.2}%
+\contentsline {subsection}{\numberline {4.5.3}Passo 3 --- Conectar o agente ao servidor MCP}{33}{subsection.4.5.3}%
+\contentsline {subsection}{\numberline {4.5.4}Passo 4 --- Decis\~oes de projeto: tool nativa vs.\ MCP}{34}{subsection.4.5.4}%
+\contentsline {section}{\numberline {4.6}Autoavalia\c {c}\~ao}{34}{section.4.6}%
+\contentsline {section}{\numberline {4.7}Resumo}{34}{section.4.7}%
+\contentsline {section}{\numberline {4.8}Para saber mais}{35}{section.4.8}%
+\contentsline {section}{\numberline {4.9}Plano de testes do cap\'itulo}{35}{section.4.9}%
+\contentsline {subsection}{\numberline {4.9.1}Testes funcionais}{35}{subsection.4.9.1}%
+\contentsline {subsection}{\numberline {4.9.2}Teste de isolamento}{35}{subsection.4.9.2}%
+\contentsline {section}{\numberline {4.10}Crit\'erios de aceite}{36}{section.4.10}%
+\contentsline {section}{\numberline {4.11}Espa\c {c}o para expans\~ao iterativa}{36}{section.4.11}%
+\contentsline {chapter}{\numberline {5}Fundamentos de RAG}{37}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Pr\'e-requisitos}{37}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Escopo do cap\'itulo}{37}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Objetivos de aprendizagem}{37}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Conceitos te\'oricos}{38}{section.5.4}%
+\contentsline {subsection}{\numberline {5.4.1}Por que RAG?}{38}{subsection.5.4.1}%
+\contentsline {subsection}{\numberline {5.4.2}Chunking: dividir para indexar}{38}{subsection.5.4.2}%
+\contentsline {subsection}{\numberline {5.4.3}Embeddings: representar significado em vetores}{39}{subsection.5.4.3}%
+\contentsline {subsection}{\numberline {5.4.4}FAISS: \'indice de vetores local}{39}{subsection.5.4.4}%
+\contentsline {section}{\numberline {5.5}Implementa\c {c}\~ao orientada por passos}{39}{section.5.5}%
+\contentsline {subsection}{\numberline {5.5.1}Passo 1 --- Preparar a cole\c {c}\~ao de documentos}{39}{subsection.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.2}Passo 2 --- Implementar chunking por par\'agrafos}{40}{subsection.5.5.2}%
+\contentsline {subsection}{\numberline {5.5.3}Passo 3 --- Gerar embeddings e indexar no FAISS}{40}{subsection.5.5.3}%
+\contentsline {subsection}{\numberline {5.5.4}Passo 4 --- Recuperar chunks por similaridade}{41}{subsection.5.5.4}%
+\contentsline {subsection}{\numberline {5.5.5}Passo 5 --- Pipeline RAG completo com o agente}{42}{subsection.5.5.5}%
+\contentsline {section}{\numberline {5.6}Autoavalia\c {c}\~ao}{43}{section.5.6}%
+\contentsline {section}{\numberline {5.7}Resumo}{43}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Para saber mais}{44}{section.5.8}%
+\contentsline {section}{\numberline {5.9}Plano de testes do cap\'itulo}{44}{section.5.9}%
+\contentsline {section}{\numberline {5.10}Crit\'erios de aceite}{44}{section.5.10}%
+\contentsline {section}{\numberline {5.11}Espa\c {c}o para expans\~ao iterativa}{45}{section.5.11}%
+\contentsline {chapter}{\numberline {6}RAG Corporativo e Arquitetura de Dados}{46}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Escopo do capitulo}{46}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Objetivos de aprendizagem}{46}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Conceitos teoricos}{47}{section.6.3}%
+\contentsline {subsection}{\numberline {6.3.1}RAG em ambiente regulado}{47}{subsection.6.3.1}%
+\contentsline {subsection}{\numberline {6.3.2}Tipos de documento no projeto}{47}{subsection.6.3.2}%
+\contentsline {section}{\numberline {6.4}Implementacao orientada por passos}{47}{section.6.4}%
+\contentsline {subsection}{\numberline {6.4.1}Passo 1 --- Preparar colecao de documentos}{47}{subsection.6.4.1}%
+\contentsline {subsection}{\numberline {6.4.2}Passo 2 --- Ingerir texto no endpoint \texttt {/documentos}}{48}{subsection.6.4.2}%
+\contentsline {subsection}{\numberline {6.4.3}Passo 3 --- Verificar chunking e indexacao}{48}{subsection.6.4.3}%
+\contentsline {subsection}{\numberline {6.4.4}Passo 4 --- Consumir o contexto em consulta real}{49}{subsection.6.4.4}%
+\contentsline {subsection}{\numberline {6.4.5}Passo 5 --- Resultado completo da aula}{49}{subsection.6.4.5}%
+\contentsline {section}{\numberline {6.5}Plano de testes do capitulo}{49}{section.6.5}%
+\contentsline {subsection}{\numberline {6.5.1}Teste funcional}{49}{subsection.6.5.1}%
+\contentsline {subsection}{\numberline {6.5.2}Teste de desempenho}{50}{subsection.6.5.2}%
+\contentsline {subsection}{\numberline {6.5.3}Teste de qualidade de resposta}{50}{subsection.6.5.3}%
+\contentsline {section}{\numberline {6.6}Criterios de aceite}{50}{section.6.6}%
+\contentsline {section}{\numberline {6.7}Espaco para expansao iterativa}{50}{section.6.7}%
+\contentsline {chapter}{\numberline {7}Pipeline Assincrono em AWS}{51}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Escopo do capitulo}{51}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Objetivos de aprendizagem}{51}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Conceitos teoricos}{52}{section.7.3}%
+\contentsline {subsection}{\numberline {7.3.1}Padrao fire-and-poll}{52}{subsection.7.3.1}%
+\contentsline {subsection}{\numberline {7.3.2}Estados de processamento}{52}{subsection.7.3.2}%
+\contentsline {section}{\numberline {7.4}Implementacao orientada por passos}{52}{section.7.4}%
+\contentsline {subsection}{\numberline {7.4.1}Passo 1 --- Submeter consulta e enfileirar}{52}{subsection.7.4.1}%
+\contentsline {subsection}{\numberline {7.4.2}Passo 2 --- Processar no worker}{53}{subsection.7.4.2}%
+\contentsline {subsection}{\numberline {7.4.3}Passo 3 --- Consultar status}{53}{subsection.7.4.3}%
+\contentsline {subsection}{\numberline {7.4.4}Passo 4 --- Teste ponta a ponta de laboratorio}{53}{subsection.7.4.4}%
+\contentsline {subsection}{\numberline {7.4.5}Passo 5 --- Resultado completo da aula}{54}{subsection.7.4.5}%
+\contentsline {subsection}{\numberline {7.4.6}Passo 6 --- Evidencia operacional via frontend CloudFront}{54}{subsection.7.4.6}%
+\contentsline {section}{\numberline {7.5}Plano de testes do capitulo}{54}{section.7.5}%
+\contentsline {subsection}{\numberline {7.5.1}Teste funcional}{54}{subsection.7.5.1}%
+\contentsline {subsection}{\numberline {7.5.2}Teste de desempenho}{55}{subsection.7.5.2}%
+\contentsline {subsection}{\numberline {7.5.3}Teste de qualidade de resposta}{55}{subsection.7.5.3}%
+\contentsline {section}{\numberline {7.6}Criterios de aceite}{55}{section.7.6}%
+\contentsline {section}{\numberline {7.7}Espaco para expansao iterativa}{55}{section.7.7}%
+\contentsline {chapter}{\numberline {8}Segmentacao, Personas e Digital Twins}{56}{chapter.8}%
+\contentsline {section}{\numberline {8.1}Escopo do capitulo}{56}{section.8.1}%
+\contentsline {section}{\numberline {8.2}Objetivos de aprendizagem}{56}{section.8.2}%
+\contentsline {section}{\numberline {8.3}Conceitos teoricos}{57}{section.8.3}%
+\contentsline {subsection}{\numberline {8.3.1}Tres superficies de analise}{57}{subsection.8.3.1}%
+\contentsline {subsection}{\numberline {8.3.2}Features de clusterizacao}{57}{subsection.8.3.2}%
+\contentsline {section}{\numberline {8.4}Implementacao orientada por passos}{57}{section.8.4}%
+\contentsline {subsection}{\numberline {8.4.1}Passo 1 --- Gerar base sintetica e executar clustering}{57}{subsection.8.4.1}%
+\contentsline {subsection}{\numberline {8.4.2}Passo 2 --- Criar contexto RAG por cluster}{58}{subsection.8.4.2}%
+\contentsline {subsection}{\numberline {8.4.3}Passo 3 --- Instanciar agente persona}{58}{subsection.8.4.3}%
+\contentsline {subsection}{\numberline {8.4.4}Passo 4 --- Criar digital twin sob demanda}{58}{subsection.8.4.4}%
+\contentsline {subsection}{\numberline {8.4.5}Passo 5 --- Chamar a API em cada modo}{59}{subsection.8.4.5}%
+\contentsline {subsection}{\numberline {8.4.6}Passo 6 --- Resultado completo da aula}{59}{subsection.8.4.6}%
+\contentsline {subsection}{\numberline {8.4.7}Passo 7 --- Evidencias de execucao em producao}{60}{subsection.8.4.7}%
+\contentsline {section}{\numberline {8.5}Plano de testes do capitulo}{60}{section.8.5}%
+\contentsline {subsection}{\numberline {8.5.1}Teste funcional}{60}{subsection.8.5.1}%
+\contentsline {subsection}{\numberline {8.5.2}Teste de desempenho}{60}{subsection.8.5.2}%
+\contentsline {subsection}{\numberline {8.5.3}Teste de qualidade de resposta}{60}{subsection.8.5.3}%
+\contentsline {section}{\numberline {8.6}Criterios de aceite}{61}{section.8.6}%
+\contentsline {section}{\numberline {8.7}Espaco para expansao iterativa}{61}{section.8.7}%
+\contentsline {chapter}{\numberline {9}GraphRAG com Neptune}{62}{chapter.9}%
+\contentsline {section}{\numberline {9.1}Escopo do capitulo}{62}{section.9.1}%
+\contentsline {section}{\numberline {9.2}Objetivos de aprendizagem}{62}{section.9.2}%
+\contentsline {section}{\numberline {9.3}Conceitos teoricos}{63}{section.9.3}%
+\contentsline {subsection}{\numberline {9.3.1}Do RAG textual ao GraphRAG}{63}{subsection.9.3.1}%
+\contentsline {subsection}{\numberline {9.3.2}Fontes de contexto combinadas}{63}{subsection.9.3.2}%
+\contentsline {section}{\numberline {9.4}Implementacao orientada por passos}{63}{section.9.4}%
+\contentsline {subsection}{\numberline {9.4.1}Passo 1 --- Popular o grafo de conhecimento}{63}{subsection.9.4.1}%
+\contentsline {subsection}{\numberline {9.4.2}Passo 2 --- Ingerir documentos para mapeamento textual}{63}{subsection.9.4.2}%
+\contentsline {subsection}{\numberline {9.4.3}Passo 3 --- Executar consulta relacional no Neptune}{64}{subsection.9.4.3}%
+\contentsline {subsection}{\numberline {9.4.4}Passo 4 --- Fundir contexto textual e relacional}{64}{subsection.9.4.4}%
+\contentsline {subsection}{\numberline {9.4.5}Passo 5 --- Validar em consulta de negocio}{64}{subsection.9.4.5}%
+\contentsline {subsection}{\numberline {9.4.6}Passo 6 --- Resultado completo da aula}{65}{subsection.9.4.6}%
+\contentsline {section}{\numberline {9.5}Plano de testes do capitulo}{65}{section.9.5}%
+\contentsline {subsection}{\numberline {9.5.1}Teste funcional}{65}{subsection.9.5.1}%
+\contentsline {subsection}{\numberline {9.5.2}Teste de desempenho}{65}{subsection.9.5.2}%
+\contentsline {subsection}{\numberline {9.5.3}Teste de qualidade de resposta}{66}{subsection.9.5.3}%
+\contentsline {section}{\numberline {9.6}Criterios de aceite}{66}{section.9.6}%
+\contentsline {section}{\numberline {9.7}Espaco para expansao iterativa}{66}{section.9.7}%
+\contentsline {chapter}{\numberline {10}Pipeline Integrado em Producao}{67}{chapter.10}%
+\contentsline {section}{\numberline {10.1}Escopo do capitulo}{67}{section.10.1}%
+\contentsline {section}{\numberline {10.2}Objetivos de aprendizagem}{67}{section.10.2}%
+\contentsline {section}{\numberline {10.3}Conceitos teoricos}{68}{section.10.3}%
+\contentsline {subsection}{\numberline {10.3.1}Duas fases, um sistema}{68}{subsection.10.3.1}%
+\contentsline {subsection}{\numberline {10.3.2}Estrategia de indexacao: indice unico versus indice por cliente}{68}{subsection.10.3.2}%
+\contentsline {subsection}{\numberline {10.3.3}Indice de confiabilidade}{69}{subsection.10.3.3}%
+\contentsline {section}{\numberline {10.4}Implementacao orientada por passos}{70}{section.10.4}%
+\contentsline {subsection}{\numberline {10.4.1}Passo 1 --- Executar a fase offline}{70}{subsection.10.4.1}%
+\contentsline {subsection}{\numberline {10.4.2}Passo 2 --- Verificar artefatos no S3 e indices no OpenSearch}{70}{subsection.10.4.2}%
+\contentsline {subsection}{\numberline {10.4.3}Passo 3 --- Executar os tres modos via notebook}{70}{subsection.10.4.3}%
+\contentsline {subsection}{\numberline {10.4.4}Passo 4 --- Analisar o indice de confiabilidade}{71}{subsection.10.4.4}%
+\contentsline {subsection}{\numberline {10.4.5}Passo 5 --- Simular degradacao por ausencia de indexacao}{71}{subsection.10.4.5}%
+\contentsline {subsection}{\numberline {10.4.6}Passo 6 --- Resultado completo da aula}{71}{subsection.10.4.6}%
+\contentsline {section}{\numberline {10.5}Plano de testes do capitulo}{71}{section.10.5}%
+\contentsline {subsection}{\numberline {10.5.1}Teste funcional}{71}{subsection.10.5.1}%
+\contentsline {subsection}{\numberline {10.5.2}Teste de qualidade de resposta}{72}{subsection.10.5.2}%
+\contentsline {section}{\numberline {10.6}Criterios de aceite}{72}{section.10.6}%
+\contentsline {section}{\numberline {10.7}Espaco para expansao iterativa}{72}{section.10.7}%
+\contentsline {chapter}{\numberline {11}Confiabilidade, Observabilidade e Opera\c {c}\~ao}{73}{chapter.11}%
+\contentsline {section}{\numberline {11.1}Pr\'e-requisitos}{73}{section.11.1}%
+\contentsline {section}{\numberline {11.2}Escopo do cap\'itulo}{73}{section.11.2}%
+\contentsline {section}{\numberline {11.3}Objetivos de aprendizagem}{74}{section.11.3}%
+\contentsline {section}{\numberline {11.4}Conceitos te\'oricos}{74}{section.11.4}%
+\contentsline {subsection}{\numberline {11.4.1}\'Indice de confiabilidade}{74}{subsection.11.4.1}%
+\contentsline {subsection}{\numberline {11.4.2}OpenTelemetry e Langfuse}{74}{subsection.11.4.2}%
+\contentsline {section}{\numberline {11.5}Implementa\c {c}\~ao orientada por passos}{75}{section.11.5}%
+\contentsline {subsection}{\numberline {11.5.1}Passo 1 --- \'Indice de confiabilidade}{75}{subsection.11.5.1}%
+\contentsline {subsection}{\numberline {11.5.2}Passo 2 --- Configurar observabilidade com OTel}{76}{subsection.11.5.2}%
+\contentsline {subsection}{\numberline {11.5.3}Passo 3 --- Estados da requisi\c {c}\~ao no DynamoDB}{76}{subsection.11.5.3}%
+\contentsline {section}{\numberline {11.6}Autoavalia\c {c}\~ao}{77}{section.11.6}%
+\contentsline {section}{\numberline {11.7}Resumo}{77}{section.11.7}%
+\contentsline {section}{\numberline {11.8}Plano de testes do cap\'itulo}{77}{section.11.8}%
+\contentsline {section}{\numberline {11.9}Crit\'erios de aceite}{78}{section.11.9}%
+\contentsline {section}{\numberline {11.10}Espa\c {c}o para expans\~ao iterativa}{78}{section.11.10}%
+\contentsline {chapter}{\numberline {12}M\'etricas de Avalia\c {c}\~ao de Mercado}{79}{chapter.12}%
+\contentsline {section}{\numberline {12.1}Pr\'e-requisitos}{79}{section.12.1}%
+\contentsline {section}{\numberline {12.2}Escopo do cap\'itulo}{79}{section.12.2}%
+\contentsline {section}{\numberline {12.3}Objetivos de aprendizagem}{79}{section.12.3}%
+\contentsline {section}{\numberline {12.4}Conceitos te\'oricos}{80}{section.12.4}%
+\contentsline {subsection}{\numberline {12.4.1}ROUGE-L --- precis\~ao lexical}{80}{subsection.12.4.1}%
+\contentsline {paragraph}{Vantagens:}{80}{section*.7}%
+\contentsline {paragraph}{Limita\c {c}\~oes:}{80}{section*.8}%
+\contentsline {subsection}{\numberline {12.4.2}BERTScore --- similaridade sem\^antica}{80}{subsection.12.4.2}%
+\contentsline {subsection}{\numberline {12.4.3}G-Eval --- avalia\c {c}\~ao por LLM}{80}{subsection.12.4.3}%
+\contentsline {subsection}{\numberline {12.4.4}Quando usar cada m\'etrica}{80}{subsection.12.4.4}%
+\contentsline {section}{\numberline {12.5}Implementa\c {c}\~ao orientada por passos}{81}{section.12.5}%
+\contentsline {subsection}{\numberline {12.5.1}Passo 1 --- ROUGE-L offline (sem GPU, sem API)}{81}{subsection.12.5.1}%
+\contentsline {subsection}{\numberline {12.5.2}Passo 2 --- Executar avalia\c {c}\~ao offline}{81}{subsection.12.5.2}%
+\contentsline {subsection}{\numberline {12.5.3}Passo 3 --- Avalia\c {c}\~ao em lote com CSV}{82}{subsection.12.5.3}%
+\contentsline {section}{\numberline {12.6}Autoavalia\c {c}\~ao}{82}{section.12.6}%
+\contentsline {section}{\numberline {12.7}Resumo}{82}{section.12.7}%
+\contentsline {section}{\numberline {12.8}Plano de testes do cap\'itulo}{83}{section.12.8}%
+\contentsline {section}{\numberline {12.9}Crit\'erios de aceite}{83}{section.12.9}%
+\contentsline {section}{\numberline {12.10}Espa\c {c}o para expans\~ao iterativa}{83}{section.12.10}%
+\contentsline {chapter}{\numberline {13}LLM as Judge}{84}{chapter.13}%
+\contentsline {section}{\numberline {13.1}Pr\'e-requisitos}{84}{section.13.1}%
+\contentsline {section}{\numberline {13.2}Escopo do cap\'itulo}{84}{section.13.2}%
+\contentsline {section}{\numberline {13.3}Objetivos de aprendizagem}{84}{section.13.3}%
+\contentsline {section}{\numberline {13.4}Conceitos te\'oricos}{85}{section.13.4}%
+\contentsline {subsection}{\numberline {13.4.1}Por que LLM-as-Judge?}{85}{subsection.13.4.1}%
+\contentsline {subsection}{\numberline {13.4.2}Rubrica de 4 dimens\~oes}{85}{subsection.13.4.2}%
+\contentsline {subsection}{\numberline {13.4.3}Modo mock vs.\spacefactor \@m {} Bedrock}{85}{subsection.13.4.3}%
+\contentsline {section}{\numberline {13.5}Implementa\c {c}\~ao orientada por passos}{86}{section.13.5}%
+\contentsline {subsection}{\numberline {13.5.1}Passo 1 --- Estrutura da rubrica como prompt}{86}{subsection.13.5.1}%
+\contentsline {subsection}{\numberline {13.5.2}Passo 2 --- Executar em modo mock}{86}{subsection.13.5.2}%
+\contentsline {subsection}{\numberline {13.5.3}Passo 3 --- Interpreta\c {c}\~ao e calibra\c {c}\~ao}{87}{subsection.13.5.3}%
+\contentsline {section}{\numberline {13.6}Autoavalia\c {c}\~ao}{87}{section.13.6}%
+\contentsline {section}{\numberline {13.7}Resumo}{87}{section.13.7}%
+\contentsline {section}{\numberline {13.8}Plano de testes do cap\'itulo}{88}{section.13.8}%
+\contentsline {section}{\numberline {13.9}Crit\'erios de aceite}{88}{section.13.9}%
+\contentsline {section}{\numberline {13.10}Espa\c {c}o para expans\~ao iterativa}{88}{section.13.10}%
+\contentsline {chapter}{\numberline {14}Golden Dataset e Regress\~ao de Qualidade}{89}{chapter.14}%
+\contentsline {section}{\numberline {14.1}Pr\'e-requisitos}{89}{section.14.1}%
+\contentsline {section}{\numberline {14.2}Escopo do cap\'itulo}{89}{section.14.2}%
+\contentsline {section}{\numberline {14.3}Objetivos de aprendizagem}{89}{section.14.3}%
+\contentsline {section}{\numberline {14.4}Conceitos te\'oricos}{90}{section.14.4}%
+\contentsline {subsection}{\numberline {14.4.1}O que \'e um golden dataset?}{90}{subsection.14.4.1}%
+\contentsline {subsection}{\numberline {14.4.2}Curadoria: sintético vs.\spacefactor \@m {} humano}{90}{subsection.14.4.2}%
+\contentsline {subsection}{\numberline {14.4.3}Regress\~ao vs.\spacefactor \@m {} melhoria}{90}{subsection.14.4.3}%
+\contentsline {section}{\numberline {14.5}Implementa\c {c}\~ao orientada por passos}{91}{section.14.5}%
+\contentsline {subsection}{\numberline {14.5.1}Passo 1 --- Estrutura de um caso do golden dataset}{91}{subsection.14.5.1}%
+\contentsline {subsection}{\numberline {14.5.2}Passo 2 --- Criar e salvar o dataset}{91}{subsection.14.5.2}%
+\contentsline {subsection}{\numberline {14.5.3}Passo 3 --- Executar regress\~ao}{91}{subsection.14.5.3}%
+\contentsline {subsection}{\numberline {14.5.4}Passo 4 --- Interpretar o diff}{92}{subsection.14.5.4}%
+\contentsline {subsection}{\numberline {14.5.5}Passo 5 --- Integra\c {c}\~ao com CI/CD}{92}{subsection.14.5.5}%
+\contentsline {section}{\numberline {14.6}Autoavalia\c {c}\~ao}{93}{section.14.6}%
+\contentsline {section}{\numberline {14.7}Resumo}{93}{section.14.7}%
+\contentsline {section}{\numberline {14.8}Plano de testes do cap\'itulo}{93}{section.14.8}%
+\contentsline {section}{\numberline {14.9}Crit\'erios de aceite}{93}{section.14.9}%
+\contentsline {section}{\numberline {14.10}Espa\c {c}o para expans\~ao iterativa}{94}{section.14.10}%
+\contentsline {section}{\numberline {14.11}Objetivos de aprendizagem}{94}{section.14.11}%
+\contentsline {section}{\numberline {14.12}Implementacao orientada por passos}{94}{section.14.12}%
+\contentsline {section}{\numberline {14.13}Plano de testes do capitulo}{94}{section.14.13}%
+\contentsline {subsection}{\numberline {14.13.1}Teste funcional}{94}{subsection.14.13.1}%
+\contentsline {subsection}{\numberline {14.13.2}Teste de desempenho}{94}{subsection.14.13.2}%
+\contentsline {subsection}{\numberline {14.13.3}Teste de qualidade de resposta}{95}{subsection.14.13.3}%
+\contentsline {section}{\numberline {14.14}Criterios de aceite}{95}{section.14.14}%
+\contentsline {section}{\numberline {14.15}Espaco para expansao iterativa}{95}{section.14.15}%
+\contentsline {chapter}{\numberline {15}Roadmap de Produ\c {c}\~ao e Evolu\c {c}\~ao Cont\'inua}{96}{chapter.15}%
+\contentsline {section}{\numberline {15.1}Escopo do cap\'itulo}{96}{section.15.1}%
+\contentsline {section}{\numberline {15.2}Objetivos de aprendizagem}{96}{section.15.2}%
+\contentsline {section}{\numberline {15.3}Modelo de maturidade}{97}{section.15.3}%
+\contentsline {subsection}{\numberline {15.3.1}N\'ivel 1 --- MVP Offline}{97}{subsection.15.3.1}%
+\contentsline {subsection}{\numberline {15.3.2}N\'ivel 2 --- Integra\c {c}\~ao AWS}{97}{subsection.15.3.2}%
+\contentsline {subsection}{\numberline {15.3.3}N\'ivel 3 --- Produ\c {c}\~ao Sustent\'avel}{97}{subsection.15.3.3}%
+\contentsline {section}{\numberline {15.4}Prioriza\c {c}\~ao por impacto e esfor\c {c}o}{97}{section.15.4}%
+\contentsline {section}{\numberline {15.5}O ciclo de melhoria cont\'inua}{97}{section.15.5}%
+\contentsline {section}{\numberline {15.6}Resumo}{98}{section.15.6}%
+\contentsline {section}{\numberline {15.7}Espa\c {c}o para expans\~ao iterativa}{98}{section.15.7}%
+\contentsline {chapter}{\numberline {16}Esteiras de CI/CD Multi-Ambiente para Produtos AWS Banc\'arios}{100}{chapter.16}%
+\contentsline {section}{\numberline {16.1}Escopo do cap\'itulo}{100}{section.16.1}%
+\contentsline {section}{\numberline {16.2}Objetivos de aprendizagem}{100}{section.16.2}%
+\contentsline {section}{\numberline {16.3}Conceitos te\'oricos}{101}{section.16.3}%
+\contentsline {subsection}{\numberline {16.3.1}Isolamento de contas AWS por ambiente}{101}{subsection.16.3.1}%
+\contentsline {subsection}{\numberline {16.3.2}Esteira por produto}{101}{subsection.16.3.2}%
+\contentsline {subsection}{\numberline {16.3.3}Fluxo de promoção entre ambientes}{101}{subsection.16.3.3}%
+\contentsline {section}{\numberline {16.4}Implementa\c {c}\~ao orientada por passos}{101}{section.16.4}%
+\contentsline {subsection}{\numberline {16.4.1}Passo 1 --- Estrutura de reposit\'orio por produto}{101}{subsection.16.4.1}%
+\contentsline {subsection}{\numberline {16.4.2}Passo 2 --- Configurar \textit {backend} Terraform por ambiente}{102}{subsection.16.4.2}%
+\contentsline {subsection}{\numberline {16.4.3}Passo 3 --- Workflow de CI (pull request)}{103}{subsection.16.4.3}%
+\contentsline {subsection}{\numberline {16.4.4}Passo 4 --- Workflow de deploy com promo\c {c}\~ao controlada}{104}{subsection.16.4.4}%
+\contentsline {section}{\numberline {16.5}Plano de testes do cap\'itulo}{105}{section.16.5}%
+\contentsline {subsection}{\numberline {16.5.1}Teste funcional}{105}{subsection.16.5.1}%
+\contentsline {subsection}{\numberline {16.5.2}Teste de desempenho}{105}{subsection.16.5.2}%
+\contentsline {subsection}{\numberline {16.5.3}Teste de qualidade}{105}{subsection.16.5.3}%
+\contentsline {section}{\numberline {16.6}Crit\'erios de aceite}{106}{section.16.6}%
+\contentsline {section}{\numberline {16.7}Espa\c {c}o para expans\~ao iterativa}{106}{section.16.7}%
+\contentsline {chapter}{\numberline {17}Qualidade, Seguran\c {c}a e Governan\c {c}a nas Esteiras de Produto}{107}{chapter.17}%
+\contentsline {section}{\numberline {17.1}Escopo do cap\'itulo}{107}{section.17.1}%
+\contentsline {section}{\numberline {17.2}Objetivos de aprendizagem}{107}{section.17.2}%
+\contentsline {section}{\numberline {17.3}Conceitos te\'oricos}{108}{section.17.3}%
+\contentsline {subsection}{\numberline {17.3.1}Quality gates nas esteiras banc\'arias}{108}{subsection.17.3.1}%
+\contentsline {subsection}{\numberline {17.3.2}Segurança estática: Python e Terraform}{108}{subsection.17.3.2}%
+\contentsline {subsection}{\numberline {17.3.3}Princ\'ipio do menor privil\'egio em IAM}{108}{subsection.17.3.3}%
+\contentsline {section}{\numberline {17.4}Implementa\c {c}\~ao orientada por passos}{109}{section.17.4}%
+\contentsline {subsection}{\numberline {17.4.1}Passo 1 --- Configurar quality gate de testes e lint}{109}{subsection.17.4.1}%
+\contentsline {subsection}{\numberline {17.4.2}Passo 2 --- Testes de integra\c {c}\~ao contra ambiente \texttt {dev}}{109}{subsection.17.4.2}%
+\contentsline {subsection}{\numberline {17.4.3}Passo 3 --- An\'alise de seguran\c {c}a est\'atica}{111}{subsection.17.4.3}%
+\contentsline {subsection}{\numberline {17.4.4}Passo 4 --- Role IAM com menor privil\'egio via Terraform}{111}{subsection.17.4.4}%
+\contentsline {section}{\numberline {17.5}Plano de testes do cap\'itulo}{113}{section.17.5}%
+\contentsline {subsection}{\numberline {17.5.1}Teste funcional}{113}{subsection.17.5.1}%
+\contentsline {subsection}{\numberline {17.5.2}Teste de conformidade}{113}{subsection.17.5.2}%
+\contentsline {section}{\numberline {17.6}Crit\'erios de aceite}{114}{section.17.6}%
+\contentsline {section}{\numberline {17.7}Espa\c {c}o para expans\~ao iterativa}{114}{section.17.7}%
+\contentsline {chapter}{\numberline {18}Frontend Web com CloudFront para Operação da API e Ingestão RAG}{115}{chapter.18}%
+\contentsline {section}{\numberline {18.1}Escopo do cap\'itulo}{115}{section.18.1}%
+\contentsline {section}{\numberline {18.2}Objetivos de aprendizagem}{115}{section.18.2}%
+\contentsline {section}{\numberline {18.3}Conceitos te\'oricos}{116}{section.18.3}%
+\contentsline {subsection}{\numberline {18.3.1}Frontend est\'atico como superf\'icie de opera\c {c}\~ao}{116}{subsection.18.3.1}%
+\contentsline {subsection}{\numberline {18.3.2}CloudFront + S3 privado}{116}{subsection.18.3.2}%
+\contentsline {subsection}{\numberline {18.3.3}Chat ass\'incrono e ingest\~ao RAG em uma \~unica UI}{116}{subsection.18.3.3}%
+\contentsline {section}{\numberline {18.4}Implementa\c {c}\~ao orientada por passos}{117}{section.18.4}%
+\contentsline {subsection}{\numberline {18.4.1}Passo 1 --- Estruturar os assets do frontend}{117}{subsection.18.4.1}%
+\contentsline {subsection}{\numberline {18.4.2}Passo 2 --- Publicar a UI em CloudFront}{117}{subsection.18.4.2}%
+\contentsline {subsection}{\numberline {18.4.3}Passo 3 --- Implementar o fluxo de consulta ass\'incrona}{118}{subsection.18.4.3}%
+\contentsline {subsection}{\numberline {18.4.4}Passo 4 --- Implementar envio de documentos para RAG}{118}{subsection.18.4.4}%
+\contentsline {subsection}{\numberline {18.4.5}Passo 5 --- Planejar evolu\c {c}\~ao para PDF e DOCX}{118}{subsection.18.4.5}%
+\contentsline {section}{\numberline {18.5}Plano de testes do cap\'itulo}{119}{section.18.5}%
+\contentsline {subsection}{\numberline {18.5.1}Teste funcional}{119}{subsection.18.5.1}%
+\contentsline {subsection}{\numberline {18.5.2}Teste de valida\c {c}\~ao em produ\c {c}\~ao (AWS)}{119}{subsection.18.5.2}%
+\contentsline {subsection}{\numberline {18.5.3}Teste de seguran\c {c}a}{120}{subsection.18.5.3}%
+\contentsline {section}{\numberline {18.6}Crit\'erios de aceite}{120}{section.18.6}%
+\contentsline {section}{\numberline {18.7}Espa\c {c}o para expans\~ao iterativa}{120}{section.18.7}%
+\contentsline {chapter}{\numberline {A}Apendice de Codigo Completo das Solucoes}{122}{appendix.A}%
+\contentsline {section}{\numberline {A.1}Como validar a autocontencao}{122}{section.A.1}%
+\contentsline {section}{\numberline {A.2}Capitulo 2 e Capitulo 10}{122}{section.A.2}%
+\contentsline {subsection}{\numberline {A.2.1}langchain.ipynb (exportado para Python)}{122}{subsection.A.2.1}%
+\contentsline {subsection}{\numberline {A.2.2}\texttt {demo\_api.ipynb} (exportado para Python)}{232}{subsection.A.2.2}%
+\contentsline {section}{\numberline {A.3}Capitulo 4 e Capitulo 5}{241}{section.A.3}%
+\contentsline {subsection}{\numberline {A.3.1}\texttt {mcp\_mock\_server.py}}{241}{subsection.A.3.1}%
+\contentsline {subsection}{\numberline {A.3.2}\texttt {mcp\_postgres\_server.py}}{245}{subsection.A.3.2}%
+\contentsline {subsection}{\numberline {A.3.3}\texttt {validate\_sprint\_a.py}}{251}{subsection.A.3.3}%
+\contentsline {section}{\numberline {A.4}Capitulo 11}{254}{section.A.4}%
+\contentsline {subsection}{\numberline {A.4.1}\texttt {otel\_config.py}}{254}{subsection.A.4.1}%
+\contentsline {subsection}{\numberline {A.4.2}status.py}{256}{subsection.A.4.2}%
+\contentsline {subsection}{\numberline {A.4.3}worker.py}{257}{subsection.A.4.3}%
+\contentsline {section}{\numberline {A.5}Capitulo 12, 13 e 14}{284}{section.A.5}%
+\contentsline {subsection}{\numberline {A.5.1}\texttt {avaliar\_metricas.py}}{284}{subsection.A.5.1}%
+\contentsline {subsection}{\numberline {A.5.2}\texttt {llm\_judge.py}}{291}{subsection.A.5.2}%
+\contentsline {subsection}{\numberline {A.5.3}\texttt {golden\_dataset.py}}{297}{subsection.A.5.3}%
+\contentsline {subsection}{\numberline {A.5.4}\texttt {golden\_baseline.json}}{305}{subsection.A.5.4}%
+\contentsline {section}{\numberline {A.6}Capitulo 18}{306}{section.A.6}%
+\contentsline {subsection}{\numberline {A.6.1}app.js}{306}{subsection.A.6.1}%
+\contentsline {subsection}{\numberline {A.6.2}config.js}{313}{subsection.A.6.2}%
+\contentsline {chapter}{\numberline {B}Template de Capitulo}{314}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Objetivos do capitulo}{314}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Implementacao pratica}{314}{section.B.2}%
+\contentsline {section}{\numberline {B.3}Politica de autocontencao (obrigatoria)}{314}{section.B.3}%
+\contentsline {section}{\numberline {B.4}Plano de testes}{315}{section.B.4}%
+\contentsline {section}{\numberline {B.5}Criterios de aceite}{315}{section.B.5}%
+\contentsline {chapter}{\numberline {C}Glossário Matemático e Técnico}{316}{appendix.C}%

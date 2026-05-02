@@ -1,0 +1,70 @@
+\chapter{Apendice de Codigo Completo das Solucoes}
+\label{apendice:codigo_completo}
+
+Este apendice consolida o codigo completo dos artefatos discutidos ao longo dos capitulos.
+O objetivo e manter a rastreabilidade entre explicacao e implementacao executavel no projeto.
+Para estabilidade de compilacao em \LaTeX{} com \texttt{listings}, os blocos abaixo usam
+copias ASCII geradas em \texttt{livro/generated/apendice\_ascii/}; os arquivos originais
+permanecem no projeto com seus caminhos de origem.
+
+\section{Como validar a autocontencao}
+
+Antes de executar os exemplos, rode:
+
+\begin{lstlisting}[language=bash,caption={Verificacao automatica de referencias de codigo no livro.}]
+pwsh -File livro/validar_autocontencao.ps1
+\end{lstlisting}
+
+Resultado esperado: \texttt{Referencias faltantes: 0}.
+
+\section{Capitulo 2 e Capitulo 10}
+
+\subsection{langchain.ipynb (exportado para Python)}
+\lstinputlisting[language=Python,caption={Notebook base do laboratorio (codigo completo dos blocos, versao ASCII para compilacao).}]{generated/apendice_ascii/livro__generated__langchain_notebook_completo.py}
+
+\subsection{\texttt{demo\_api.ipynb} (exportado para Python)}
+\lstinputlisting[language=Python,caption={Notebook de validacao de API ponta a ponta (codigo completo dos blocos, versao ASCII para compilacao).}]{generated/apendice_ascii/livro__generated__demo_api_notebook_completo.py}
+
+\section{Capitulo 4 e Capitulo 5}
+
+\subsection{\texttt{mcp\_mock\_server.py}}
+\lstinputlisting[language=Python,caption={Servidor MCP mock para testes locais (versao ASCII para compilacao).}]{generated/apendice_ascii/mcp_mock_server.py}
+
+\subsection{\texttt{mcp\_postgres\_server.py}}
+\lstinputlisting[language=Python,caption={Servidor MCP para PostgreSQL (versao ASCII para compilacao).}]{generated/apendice_ascii/mcp_postgres_server.py}
+
+\subsection{\texttt{validate\_sprint\_a.py}}
+\lstinputlisting[language=Python,caption={Script de validacao do Sprint A (versao ASCII para compilacao).}]{generated/apendice_ascii/validate_sprint_a.py}
+
+\section{Capitulo 11}
+
+\subsection{\texttt{otel\_config.py}}
+\lstinputlisting[language=Python,caption={Configuracao de observabilidade (OTel/Langfuse, versao ASCII para compilacao).}]{generated/apendice_ascii/infraestrutura__modules__lambda__src__otel_config.py}
+
+\subsection{status.py}
+\lstinputlisting[language=Python,caption={Endpoint de consulta de status (versao ASCII para compilacao).}]{generated/apendice_ascii/infraestrutura__modules__lambda__src__status.py}
+
+\subsection{worker.py}
+\lstinputlisting[language=Python,caption={Worker principal do pipeline assincrono (versao ASCII para compilacao).}]{generated/apendice_ascii/infraestrutura__modules__lambda__src__worker.py}
+
+\section{Capitulo 12, 13 e 14}
+
+\subsection{\texttt{avaliar\_metricas.py}}
+\lstinputlisting[language=Python,caption={Metricas automaticas de avaliacao (versao ASCII para compilacao).}]{generated/apendice_ascii/avaliar_metricas.py}
+
+\subsection{\texttt{llm\_judge.py}}
+\lstinputlisting[language=Python,caption={Avaliacao qualitativa com LLM as Judge (versao ASCII para compilacao).}]{generated/apendice_ascii/llm_judge.py}
+
+\subsection{\texttt{golden\_dataset.py}}
+\lstinputlisting[language=Python,caption={Criacao e regressao com golden dataset (versao ASCII para compilacao).}]{generated/apendice_ascii/golden_dataset.py}
+
+\subsection{\texttt{golden\_baseline.json}}
+\lstinputlisting[caption={Baseline de referencia para comparacao (versao ASCII para compilacao).}]{generated/apendice_ascii/golden_baseline.json}
+
+\section{Capitulo 18}
+
+\subsection{app.js}
+\lstinputlisting[caption={Frontend de operacao e ingestao (versao ASCII para compilacao).}]{generated/apendice_ascii/frontend__cloudfront_console__app.js}
+
+\subsection{config.js}
+\lstinputlisting[caption={Configuracao do frontend CloudFront (versao ASCII para compilacao).}]{generated/apendice_ascii/frontend__cloudfront_console__config.js}

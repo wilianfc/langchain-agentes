@@ -5,6 +5,14 @@
 \section{Escopo do capitulo}
 % ---------------------------------------------------------------
 
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop interno, escala de produ\c{c}\~ao.
+O agente funciona localmente. Agora ele precisa sobreviver ao mundo real:
+timeouts de API Gateway, picos de carga e lat\^encia imprediz\'ivel do LLM.
+Este cap\'itulo substitui o modelo s\'incrono por um pipeline ass\'incrono
+baseado em SQS + Lambda --- a espinha dorsal sobre a qual o loop externo operar\'a.
+\end{quote}
+
 Este capitulo descreve, como laboratorio completo, a arquitetura
 assincrona\index{arquitetura assincrona|textbf} usada para superar o limite de
 timeout do API Gateway\index{API Gateway|textbf} e processar consultas RAG com
@@ -36,7 +44,9 @@ Ao concluir este capitulo, o leitor sera capaz de:
 A estrategia adotada e \textit{fire-and-poll}\index{fire-and-poll|textbf}:
 o cliente envia a requisicao, recebe um \texttt{request\_id} imediatamente e
 consulta o estado periodicamente ate a conclusao. Essa abordagem desacopla o
-tempo de resposta da API do tempo de computacao do pipeline.
+tempo de resposta da API do tempo de computacao do pipeline. Em termos
+arquiteturais, este fluxo e uma variante do padr\~ao \textit{saga orchestration}
+aplicado a agentes e tarefas ass\'incronas~\cite{awsagentic2025}.
 
 \subsection{Estados de processamento}
 

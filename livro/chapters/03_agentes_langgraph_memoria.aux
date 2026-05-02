@@ -1,0 +1,96 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\citation{langgraph2024}
+\citation{chase2022langchain}
+\citation{yao2023react}
+\citation{awsagentic2025}
+\@writefile{toc}{\contentsline {chapter}{\numberline {3}Agentes com LangGraph e Mem\'oria}{14}{chapter.3}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\newlabel{chap:agentes_langgraph_memoria}{{3}{14}{Agentes com LangGraph e Mem\'oria}{chapter.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.1}Pr\'e-requisitos}{14}{section.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.2}Escopo do cap\'itulo}{14}{section.3.2}\protected@file@percent }
+\citation{yao2023react}
+\@writefile{toc}{\contentsline {section}{\numberline {3.3}Objetivos de aprendizagem}{15}{section.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.4}Conceitos te\'oricos}{15}{section.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.1}Grafo de estados e n\'os de processamento}{15}{subsection.3.4.1}\protected@file@percent }
+\newlabel{lst:agent_state}{{3.1}{15}{Defini\c {c}\~ao do estado do agente}{lstlisting.3.1}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.1}Defini\c {c}\~ao do estado do agente.}{15}{lstlisting.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.2}Ciclo ReAct}{15}{subsection.3.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.3}Persist\^encia de estado com \texttt  {MemorySaver}}{16}{subsection.3.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.5}Implementa\c {c}\~ao orientada por passos}{16}{section.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.1}Passo 1 --- Definir as ferramentas do agente}{16}{subsection.3.5.1}\protected@file@percent }
+\newlabel{lst:tools_definition}{{3.2}{16}{Defini\c {c}\~ao de ferramentas com \texttt {@tool}}{lstlisting.3.2}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.2}Defini\c {c}\~ao de ferramentas com \texttt  {@tool}.}{16}{lstlisting.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.2}Passo 2 --- Construir o grafo ReAct}{17}{subsection.3.5.2}\protected@file@percent }
+\newlabel{lst:langgraph_react}{{3.3}{17}{Constru\c {c}\~ao do grafo de agente ReAct com \textit {LangGraph}}{lstlisting.3.3}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.3}Constru\c {c}\~ao do grafo de agente ReAct com \textit  {LangGraph}.}{17}{lstlisting.3.3}\protected@file@percent }
+\citation{johnson2019billion}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.3}Passo 3 --- Invocar o agente com persist\^encia de contexto}{18}{subsection.3.5.3}\protected@file@percent }
+\newlabel{lst:agent_invoke}{{3.4}{18}{Invoca\c {c}\~ao do agente com \texttt {thread\_id} para persist\^encia de contexto}{lstlisting.3.4}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.4}Invoca\c {c}\~ao do agente com \texttt  {thread\_id} para persist\^encia de contexto.}{18}{lstlisting.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.4}Passo 4 --- Integrar mem\'oria vetorial FAISS}{18}{subsection.3.5.4}\protected@file@percent }
+\newlabel{lst:faiss_tool}{{3.5}{18}{Recupera\c {c}\~ao sem\^antica via FAISS integrada como ferramenta}{lstlisting.3.5}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.5}Recupera\c {c}\~ao sem\^antica via FAISS integrada como ferramenta.}{18}{lstlisting.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.6}Padr\~oes alternativos de agente}{19}{section.3.6}\protected@file@percent }
+\newlabel{sec:padroes_agentes}{{3.6}{19}{Padr\~oes alternativos de agente}{section.3.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6.1}Plan-and-Execute}{19}{subsection.3.6.1}\protected@file@percent }
+\newlabel{lst:plan_execute}{{3.6}{19}{Esbo\c {c}o do padr\~ao \textit {Plan-and-Execute} com \textit {LangGraph}}{lstlisting.3.6}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.6}Esbo\c {c}o do padr\~ao \textit  {Plan-and-Execute} com \textit  {LangGraph}.}{19}{lstlisting.3.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3.1}{\ignorespaces Compara\c {c}\~ao dos principais padr\~oes de agente com \textit  {LangGraph}.}}{20}{table.3.1}\protected@file@percent }
+\newlabel{tab:padroes_agentes}{{3.1}{20}{Compara\c {c}\~ao dos principais padr\~oes de agente com \textit {LangGraph}}{table.3.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6.2}Reflexion}{21}{subsection.3.6.2}\protected@file@percent }
+\newlabel{lst:reflexion}{{3.7}{22}{Esbo\c {c}o do padr\~ao \textit {Reflexion} com \textit {LangGraph}}{lstlisting.3.7}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.7}Esbo\c {c}o do padr\~ao \textit  {Reflexion} com \textit  {LangGraph}.}{22}{lstlisting.3.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6.3}Multi-Agent Supervisor}{23}{subsection.3.6.3}\protected@file@percent }
+\newlabel{subsec:multi_agent_supervisor}{{3.6.3}{23}{Multi-Agent Supervisor}{subsection.3.6.3}{}}
+\newlabel{lst:multi_agent_supervisor}{{3.8}{23}{Esbo\c {c}o do padr\~ao \textit {Multi-Agent Supervisor} com \textit {LangGraph}}{lstlisting.3.8}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.8}Esbo\c {c}o do padr\~ao \textit  {Multi-Agent Supervisor} com \textit  {LangGraph}.}{23}{lstlisting.3.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.7}Plano de testes do cap\'itulo}{24}{section.3.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7.1}Teste funcional}{24}{subsection.3.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7.2}Teste de desempenho}{24}{subsection.3.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7.3}Teste de qualidade de resposta}{24}{subsection.3.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.8}Crit\'erios de aceite}{25}{section.3.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.9}Autoavalia\c {c}\~ao}{25}{section.3.9}\protected@file@percent }
+\newlabel{sec:autoavaliacao_cap03}{{3.9}{25}{Autoavalia\c {c}\~ao}{section.3.9}{}}
+\@writefile{toc}{\contentsline {paragraph}{Gabarito comentado.}{25}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.10}Quest\~ao para reflex\~ao}{26}{section.3.10}\protected@file@percent }
+\newlabel{sec:reflexao_cap03}{{3.10}{26}{Quest\~ao para reflex\~ao}{section.3.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.11}Resumo}{26}{section.3.11}\protected@file@percent }
+\newlabel{sec:resumo_cap03}{{3.11}{26}{Resumo}{section.3.11}{}}
+\citation{yao2023react}
+\citation{shinn2023reflexion}
+\citation{johnson2019billion}
+\@writefile{toc}{\contentsline {section}{\numberline {3.12}Para saber mais}{27}{section.3.12}\protected@file@percent }
+\newlabel{sec:para_saber_mais_cap03}{{3.12}{27}{Para saber mais}{section.3.12}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.13}Espa\c {c}o para expans\~ao iterativa}{27}{section.3.13}\protected@file@percent }
+\@setckpt{chapters/03_agentes_langgraph_memoria}{
+\setcounter{page}{28}
+\setcounter{equation}{0}
+\setcounter{enumi}{7}
+\setcounter{enumii}{0}
+\setcounter{enumiii}{0}
+\setcounter{enumiv}{0}
+\setcounter{footnote}{2}
+\setcounter{mpfootnote}{0}
+\setcounter{part}{0}
+\setcounter{chapter}{3}
+\setcounter{section}{13}
+\setcounter{subsection}{0}
+\setcounter{subsubsection}{0}
+\setcounter{paragraph}{0}
+\setcounter{subparagraph}{0}
+\setcounter{figure}{0}
+\setcounter{table}{1}
+\setcounter{Item}{32}
+\setcounter{Hfootnote}{8}
+\setcounter{bookmark@seq@number}{64}
+\setcounter{LT@tables}{0}
+\setcounter{LT@chunks}{0}
+\setcounter{parentequation}{0}
+\setcounter{lstnumber}{41}
+\setcounter{ABCIaux}{0}
+\setcounter{ABCImax}{0}
+\setcounter{section@level}{1}
+\setcounter{lstlisting}{8}
+}

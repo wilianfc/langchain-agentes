@@ -1,0 +1,883 @@
+"""
+Worker Lambda ? Pipeline RAG completo com OTel/Langfuse.
+
+Modos:
+  segmento ? gerente fala sobre o cliente em 3? pessoa (RAG: cluster index)
+  persona  ? arquetipo nomeado do cluster em 1? pessoa (RAG: cluster index)
+  twin     ? digital twin do cliente em 1? pessoa     (RAG: clientes-digital-twins)
+
+Cold start: carrega slim PKL do S3 (numpy only, sem sklearn).
+Warm start: reutiliza modelo em memoria.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import pickle
+import time
+import traceback
+from datetime import datetime, timezone
+from io import BytesIO
+from typing import Any, Dict, List, Optional
+
+import boto3
+import numpy as np
+from botocore.config import Config
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
+
+import otel_config  # inicializa OTel + openlit antes de qualquer chamada Bedrock
+otel_config.init()
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ?? Clientes AWS ???????????????????????????????????????????????????????????????
+_config = Config(connect_timeout=5, read_timeout=30)
+_dynamodb = boto3.resource("dynamodb", config=_config)
+_sns = boto3.client("sns", config=_config)
+_s3 = boto3.client("s3", config=_config)
+_athena = boto3.client("athena", config=_config)
+
+# ?? Variaveis de ambiente ??????????????????????????????????????????????????????
+TABLE_NAME = os.environ["DYNAMODB_TABLE"]
+SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
+S3_BUCKET = os.environ.get("S3_BUCKET", "")
+S3_PREFIX = os.environ.get("S3_PREFIX", "clientes-agente/")
+OPENSEARCH_ENDPOINT = os.environ.get("OPENSEARCH_ENDPOINT", "")
+AWS_REGION = os.environ.get("AWS_REGION", "sa-east-1")
+AWS_ACCOUNT_ID = os.environ.get("AWS_ACCOUNT_ID", "")
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
+BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
+NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "")
+NEPTUNE_PROXY_FUNCTION = os.environ.get("NEPTUNE_PROXY_FUNCTION", "")
+ENABLE_LLM_JUDGE = os.environ.get("ENABLE_LLM_JUDGE", "false").lower() == "true"
+ATHENA_DATABASE = os.environ.get("ATHENA_DATABASE", "")
+ATHENA_OUTPUT_BUCKET = os.environ.get("ATHENA_OUTPUT_BUCKET", "")
+
+FEATURES = ["idade", "renda_mensal", "saldo_medio", "transacoes_mes", "score_credito", "num_produtos"]
+
+# ?? Clientes inicializados no modulo (fora do handler ? boas praticas Lambda) ??
+_bedrock_client = boto3.client(
+    "bedrock-runtime",
+    region_name=BEDROCK_REGION,
+    config=Config(connect_timeout=5, read_timeout=120),
+)
+
+# ?? Estado de cold start (PKL carregado do S3 na primeira invocacao) ???????????
+_model_data: Optional[Dict[str, Any]] = None
+
+
+def _get_model() -> Dict[str, Any]:
+    """Carrega slim PKL do S3 no cold start."""
+    global _model_data
+    if _model_data is not None:
+        return _model_data
+
+    if not S3_BUCKET:
+        raise RuntimeError("S3_BUCKET nao definido ? nao e possivel carregar o modelo.")
+
+    key = f"{S3_PREFIX}modelo_clustering_slim.pkl"
+    log.info("Cold start: carregando modelo de s3://%s/%s", S3_BUCKET, key)
+    extra = {"ExpectedBucketOwner": AWS_ACCOUNT_ID} if AWS_ACCOUNT_ID else {}
+    obj = _s3.get_object(Bucket=S3_BUCKET, Key=key, **extra)
+    _model_data = pickle.loads(obj["Body"].read())
+    log.info("Modelo carregado: %d clusters.", _model_data["n_clusters"])
+    return _model_data
+
+
+
+def _classificar(dados: Dict[str, float]) -> int:
+    m = _get_model()
+    features = m["features"]
+    X = np.array([[dados[f] for f in features]], dtype=float)
+    X = (X - m["scale_mean"]) / m["scale_std"]
+    dist = np.linalg.norm(X - m["centroids"], axis=1)
+    return int(np.argmin(dist))
+
+
+
+def _os_client() -> OpenSearch:
+    boto_session = boto3.session.Session()
+    creds = boto_session.get_credentials().get_frozen_credentials()
+    auth = AWS4Auth(creds.access_key, creds.secret_key, AWS_REGION, "es",
+                    session_token=creds.token)
+    return OpenSearch(
+        hosts=[{"host": OPENSEARCH_ENDPOINT, "port": 443}],
+        http_auth=auth,
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection,
+    )
+
+
+def _rag_segmento(cluster_id: int, query: str, k: int = 3) -> str:
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index=f"clientes-segmento-{cluster_id}",
+            body={"query": {"match": {"text": query}}, "size": k},
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de segmento (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
+def _rag_graph_sync(cluster_id: int, query: str, k: int = 3) -> str:
+    """
+    Consulta o indice OpenSearch 'neptune-graph-sync' replicado do Neptune.
+    Permite busca BM25 sobre o snapshot do grafo sem chamar Neptune diretamente,
+    reduzindo latencia e eliminando dependencia de VPC no caminho critico.
+    """
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index="neptune-graph-sync",
+            body={
+                "query": {
+                    "bool": {
+                        "must": {"match": {"text": query}},
+                        "filter": {"term": {"cluster_id": cluster_id}},
+                    }
+                },
+                "size": k,
+            },
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG graph-sync (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
+def _rag_documentos(query: str, k: int = 3) -> str:
+    """Consulta o indice documentos-knowledge (BM25 sem filtro de cluster)."""
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index="documentos-knowledge",
+            body={"query": {"match": {"text": query}}, "size": k},
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de documentos: %s", traceback.format_exc())
+        return ""
+
+
+def _rag_entrevistas(cluster_id: int, cliente_id: str, modo: str, query: str, k: int = 3) -> str:
+    """Corpus de entrevistas qualitativas.
+    Modo twin: tenta match exato por cliente_id, cai para cluster se vazio.
+    Modos segmento/persona: filtra por cluster_id.
+    """
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        if modo == "twin" and cliente_id:
+            resp = client.search(
+                index="entrevistas-clientes",
+                body={
+                    "query": {
+                        "bool": {
+                            "must": {"match": {"text": query}},
+                            "filter": {"term": {"metadata.cliente_id.keyword": cliente_id}},
+                        }
+                    },
+                    "size": k,
+                },
+            )
+            texto = _extrair_texto(resp)
+            if texto:
+                return texto
+        resp = client.search(
+            index="entrevistas-clientes",
+            body={
+                "query": {
+                    "bool": {
+                        "must": {"match": {"text": query}},
+                        "filter": {"term": {"metadata.cluster_id": cluster_id}},
+                    }
+                },
+                "size": k,
+            },
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de entrevistas (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
+def _consultar_athena_nps(tipo: str, identificador: str, produtos: List[str] = None) -> str:
+    """Executa query Athena para buscar elogios/criticas NPS do cliente ou segmento."""
+    if not ATHENA_DATABASE or not ATHENA_OUTPUT_BUCKET:
+        return "Dados de feedback NPS nao configurados."
+    try:
+        filtro = (f"cliente_id = '{identificador}'" if tipo == "cliente"
+                  else f"cluster_id = {identificador}")
+        if produtos:
+            lista = ", ".join(f"'{p}'" for p in produtos)
+            filtro += f" AND produto IN ({lista})"
+        sql = (
+            f"SELECT sentimento, produto, comentario, data_feedback "
+            f"FROM {ATHENA_DATABASE}.nps_feedbacks "
+            f"WHERE {filtro} "
+            f"ORDER BY data_feedback DESC LIMIT 20"
+        )
+        exec_id = _athena.start_query_execution(
+            QueryString=sql,
+            ResultConfiguration={"OutputLocation": f"s3://{ATHENA_OUTPUT_BUCKET}/athena-nps/"},
+        )["QueryExecutionId"]
+
+        for _ in range(30):
+            state = _athena.get_query_execution(
+                QueryExecutionId=exec_id)["QueryExecution"]["Status"]["State"]
+            if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
+                break
+            time.sleep(1)
+
+        if state != "SUCCEEDED":
+            return "Consulta NPS indisponivel no momento."
+
+        rows = _athena.get_query_results(QueryExecutionId=exec_id)["ResultSet"]["Rows"][1:]
+        if not rows:
+            return ""
+
+        def _celula(row, idx):
+            return row["Data"][idx].get("VarCharValue", "")
+
+        elogios = [r for r in rows if _celula(r, 0) == "promotor"]
+        detratores = [r for r in rows if _celula(r, 0) == "detrator"]
+        blocos: List[str] = []
+        if elogios:
+            itens = "; ".join(
+                f'"{_celula(r, 2)}" ({_celula(r, 1)})' for r in elogios[:5]
+            )
+            blocos.append(f"Elogios (promotores): {itens}.")
+        if detratores:
+            itens = "; ".join(
+                f'"{_celula(r, 2)}" ({_celula(r, 1)})' for r in detratores[:5]
+            )
+            blocos.append(f"Criticas (detratores): {itens}.")
+        return "\n".join(blocos)
+    except Exception:
+        log.warning("Erro Athena NPS: %s", traceback.format_exc())
+        return "Dados de feedback nao disponiveis."
+
+
+_NPS_TOOL_CONFIG: Optional[Dict] = (
+    {
+        "tools": [
+            {
+                "toolSpec": {
+                    "name": "consultar_feedback_nps",
+                    "description": (
+                        "Consulta elogios (promotores NPS?9) e criticas (detratores NPS?6) "
+                        "de clientes sobre produtos bancarios no data warehouse. Use quando "
+                        "a pergunta envolver satisfacao, opinioes, reclamacoes, elogios ou "
+                        "avaliacao de produtos especificos."
+                    ),
+                    "inputSchema": {
+                        "json": {
+                            "type": "object",
+                            "properties": {
+                                "tipo_consulta": {
+                                    "type": "string",
+                                    "enum": ["cliente", "segmento"],
+                                    "description": (
+                                        "'cliente' para modo twin (cliente_id), "
+                                        "'segmento' para persona/segmento (cluster_id)"
+                                    ),
+                                },
+                                "identificador": {
+                                    "type": "string",
+                                    "description": "cliente_id (ex: 'C001') ou cluster_id como string (ex: '0')",
+                                },
+                                "produtos": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Filtrar por produtos especificos (opcional)",
+                                },
+                            },
+                            "required": ["tipo_consulta", "identificador"],
+                        }
+                    },
+                }
+            }
+        ],
+        "toolChoice": {"auto": {}},
+    }
+    if ATHENA_DATABASE
+    else None
+)
+
+
+def _rag_twin(cliente_id: str, query: str, k: int = 3) -> str:
+    if not OPENSEARCH_ENDPOINT:
+        return ""
+    try:
+        client = _os_client()
+        resp = client.search(
+            index="clientes-digital-twins",
+            body={
+                "query": {
+                    "bool": {
+                        "must": {"match": {"text": query}},
+                        "filter": {"term": {"metadata.cliente_id.keyword": cliente_id}},
+                    }
+                },
+                "size": k,
+            },
+        )
+        return _extrair_texto(resp)
+    except Exception:
+        log.warning("Erro no RAG de twin (cliente %s): %s", cliente_id, traceback.format_exc())
+        return ""
+
+
+def _extrair_texto(resp: Dict) -> str:
+    hits = resp.get("hits", {}).get("hits", [])
+    textos = [h.get("_source", {}).get("text", "") for h in hits]
+    return "\n\n".join(t for t in textos if t)
+
+
+_STOPWORDS = {
+    "que", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+    "por", "para", "com", "uma", "um", "os", "as", "se", "ao", "a", "e",
+    "o", "a", "e", "sao", "tem", "foi", "ter", "ser", "nao", "mas", "ou",
+    "seu", "sua", "seus", "suas", "este", "esta", "esse", "essa", "isso",
+}
+
+
+def _palavras_chave(texto: str) -> set:
+    return {
+        w.strip(".,;:!?()\"'").lower()
+        for w in texto.split()
+        if len(w) > 4 and w.strip(".,;:!?()\"'").lower() not in _STOPWORDS
+    }
+
+
+def _confiabilidade(
+    bm25: str, sync: str, graph: str, resposta: str,
+    documentos: str = "", entrevistas: str = ""
+) -> Dict:
+    """
+    Score de confiabilidade baseado em duas dimensoes:
+      - Cobertura de fontes: quais camadas RAG entregaram conteudo (ate 0.95 do score)
+      - Sobreposicao lexica: termos do contexto presentes na resposta (ate 0.15)
+    """
+    fontes: List[str] = []
+    cobertura = 0.0
+
+    if bm25.strip():
+        fontes.append("opensearch_bm25")
+        cobertura += 0.40
+    if graph.strip():
+        fontes.append("neptune_live")
+        cobertura += 0.30
+    if sync.strip():
+        fontes.append("neptune_sync")
+        cobertura += 0.15
+    if documentos.strip():
+        fontes.append("documentos_knowledge")
+        cobertura += 0.10
+    if entrevistas.strip():
+        fontes.append("entrevistas_corpus")
+        cobertura += 0.10
+
+    contexto_total = " ".join(filter(None, [bm25, sync, graph, documentos, entrevistas]))
+    overlap = 0.0
+    if contexto_total and resposta:
+        ctx_kw = _palavras_chave(contexto_total)
+        resp_kw = _palavras_chave(resposta)
+        if ctx_kw and resp_kw:
+            overlap = min(len(ctx_kw & resp_kw) / min(len(ctx_kw), len(resp_kw)), 1.0)
+
+    score = round(min(cobertura + overlap * 0.15, 1.0), 2)
+    if score >= 0.70:
+        nivel = "alto"
+    elif score >= 0.40:
+        nivel = "medio"
+    else:
+        nivel = "baixo"
+
+    return {
+        "score": score,
+        "nivel": nivel,
+        "fontes_ativas": fontes,
+        "detalhes": {
+            "cobertura_fontes": round(cobertura, 2),
+            "sobreposicao_lexica": round(overlap, 2),
+        },
+    }
+
+
+
+def _avaliar_llm(contexto_rag: str, pergunta: str, resposta: str) -> Dict:
+    """Avaliacao semantica via segundo call Bedrock (LLM-as-judge)."""
+    try:
+        prompt = (
+            "Avalie a resposta abaixo em relacao ao contexto RAG e a pergunta. "
+            "Responda APENAS com JSON valido, sem texto adicional.\n\n"
+            f"Contexto RAG:\n{contexto_rag[:2000]}\n\n"
+            f"Pergunta: {pergunta}\n\n"
+            f"Resposta: {resposta}\n\n"
+            "JSON esperado (scores de 1 a 10):\n"
+            '{"relevancia": <int>, "fidelidade": <int>, "completude": <int>, '
+            '"raciocinio": "<1 frase explicando o score>"}'
+        )
+        resp = _bedrock_client.converse(
+            modelId=BEDROCK_MODEL_ID,
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": 256},
+        )
+        texto = resp["output"]["message"]["content"][0]["text"]
+        avaliacao = json.loads(texto)
+        scores = [
+            int(avaliacao.get("relevancia", 0)),
+            int(avaliacao.get("fidelidade", 0)),
+            int(avaliacao.get("completude", 0)),
+        ]
+        avaliacao["media"] = round(sum(scores) / len(scores), 1)
+        avaliacao["disponivel"] = True
+        return avaliacao
+    except Exception:
+        log.warning("Erro na avaliacao LLM-as-judge: %s", traceback.format_exc())
+        return {"disponivel": False}
+
+
+def _neptune_client():
+    """Retorna cliente que invoca o Neptune Proxy Lambda (dentro da VPC)."""
+    class _NeptuneProxyClient:
+        def query(self, cypher: str) -> List[Dict]:
+            resp = boto3.client("lambda", region_name=AWS_REGION,
+                                config=Config(connect_timeout=5, read_timeout=25)).invoke(
+                FunctionName=NEPTUNE_PROXY_FUNCTION,
+                InvocationType="RequestResponse",
+                Payload=json.dumps({"cypher": cypher}),
+            )
+            return json.loads(resp["Payload"].read()) or []
+
+    return _NeptuneProxyClient()
+
+
+def _rag_graph(cluster_id: int, cliente_id: str, modo: str) -> str:
+    """
+    Recuperacao GraphRAG via OpenCypher no Neptune.
+    Retorna contexto estruturado de relacionamentos do grafo de conhecimento:
+      - Segmento ? Produtos recomendados
+      - Segmento ? Persona arquetipo
+      - Cliente ? Clientes similares (k-NN via cluster)
+    Complementa o RAG BM25 do OpenSearch com raciocinio multi-hop.
+    """
+    if not NEPTUNE_PROXY_FUNCTION:
+        return ""
+    try:
+        client = _neptune_client()
+        blocos: List[str] = []
+
+        # Hop 1: produtos e estrategia do segmento
+        q_seg = (
+            f"MATCH (s:Segmento {{cluster_id: {cluster_id}}})-[:RECOMENDA]->(p:Produto) "
+            "RETURN s.nome AS segmento, collect(p.nome) AS produtos"
+        )
+        for row in client.query(q_seg):
+            seg = row.get("segmento", "")
+            produtos = ", ".join(row.get("produtos", []))
+            if produtos:
+                blocos.append(f"Produtos recomendados para '{seg}': {produtos}.")
+
+        # Hop 2: persona arquetipo do segmento
+        q_persona = (
+            f"MATCH (s:Segmento {{cluster_id: {cluster_id}}})-[:TEM_PERSONA]->(p:Persona) "
+            "RETURN p.nome AS nome, p.ocupacao AS ocupacao, p.contexto AS contexto"
+        )
+        for row in client.query(q_persona):
+            blocos.append(
+                f"Persona arquetipo: {row.get('nome')} ({row.get('ocupacao')}). "
+                f"{row.get('contexto', '')}"
+            )
+
+        # Hop 2 (twin): historico financeiro de clientes similares no mesmo cluster
+        if modo == "twin" and cliente_id:
+            q_similar = (
+                f"MATCH (c:Cliente {{id: '{cliente_id}'}})-[:SIMILAR_A]->(s:Cliente) "
+                "RETURN s.id AS similar_id, s.score_credito AS score, "
+                "s.renda_mensal AS renda LIMIT 3"
+            )
+            similares = client.query(q_similar)
+            if similares:
+                resumo = "; ".join(
+                    f"Cliente {r['similar_id']} (score {r['score']:.0f}, renda R$ {r['renda']:,.0f})"
+                    for r in similares
+                )
+                blocos.append(f"Clientes similares no grafo: {resumo}.")
+
+        return "\n".join(blocos)
+    except Exception:
+        log.warning("Erro no RAG de grafo (cluster %d): %s", cluster_id, traceback.format_exc())
+        return ""
+
+
+def _perfil(cluster_id: int) -> Dict[str, Any]:
+    # perfis.to_dict() gera {"coluna": {cluster_id: valor}, ...}
+    # precisamos inverter para {"coluna": valor} para o cluster especifico
+    raw = _get_model()["perfis"]
+    return {col: vals[cluster_id] for col, vals in raw.items() if cluster_id in vals}
+
+
+def _system_segmento(cluster_id: int) -> str:
+    p = _perfil(cluster_id)
+    seg = p.get("segmento", f"Cluster {cluster_id}")
+    prompt = p.get("prompt_segmento", "")
+    if not prompt:
+        prompt = (
+            f"Voce e um gerente de relacionamento do banco responsavel pelo segmento '{seg}'. "
+            "Analise os dados do cliente e responda com precisao e clareza em 3? pessoa. "
+            "Seja objetivo, use dados concretos e termine com uma recomendacao de acao."
+        )
+    return prompt
+
+
+def _system_persona(cluster_id: int) -> str:
+    p = _perfil(cluster_id)
+    seg = p.get("segmento", f"Cluster {cluster_id}")
+    nome = p.get("persona_nome", f"Cliente do Cluster {cluster_id}")
+    ocupacao = p.get("persona_ocupacao", "profissional")
+    canal = p.get("persona_canal", "uso os canais do banco")
+    contexto = p.get("persona_contexto", "")
+    return (
+        f"Voce e {nome}, {ocupacao}. Representa o cliente tipico do segmento '{seg}'. "
+        f"Canal preferencial: {canal}. {contexto} "
+        "REGRAS ABSOLUTAS: (1) Responda SEMPRE em 1? pessoa. "
+        "(2) Seja autentico ao perfil ? use linguagem, prioridades e preocupacoes coerentes. "
+        "(3) Nunca quebre o personagem nem mencione que e uma IA."
+    )
+
+
+def _system_twin(cliente_id: str, dados: Dict) -> str:
+    renda = float(dados.get("renda_mensal", 0))
+    score = float(dados.get("score_credito", 0))
+    idade = float(dados.get("idade", 30))
+    canal = "digital (app/internet banking)" if dados.get("canal_digital") else "agencia presencial"
+    inadimplente = dados.get("inadimplente", dados.get("inadimplencia", 0))
+    historico = "em reestruturacao financeira apos inadimplencia" if inadimplente else "adimplente"
+    return (
+        f"Voce e o gemeo digital do cliente {cliente_id}. "
+        f"Simule EXATAMENTE como este cliente especifico pensaria e reagiria:\n"
+        f"  Idade: {idade:.0f} anos | Renda: R$ {renda:,.0f}/mes | "
+        f"Score: {score:.0f} | Canal: {canal} | Situacao: {historico}\n\n"
+        "REGRAS ABSOLUTAS: (1) Responda em 1? pessoa ('Eu prefiro...', 'Para mim...'). "
+        "(2) Suas opinioes devem refletir fielmente renda, score e historico acima. "
+        "(3) Nao quebre o personagem. (4) Nao mencione que e uma simulacao."
+    )
+
+
+# ?? Few-shot examples por modo ????????????????????????????????????????????????
+
+_FEWSHOT_SEGMENTO: List[Dict] = [
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nPerfil 'Jovem Digital': 312 clientes, idade media 27 anos, "
+            "renda R$ 2.800/mes, score 640, inadimplencia 8,2%, uso digital 94%.\n\n"
+            "Pergunta: Que produto de credito faz mais sentido para este cliente?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Com base no perfil Jovem Digital, o produto mais adequado e o **cartao de credito com cashback "
+            "de 2% sem anuidade**. Justificativa: score 640 permite aprovacao sem garantias; uso digital de "
+            "94% indica preferencia por gestao via app; renda de R$ 2.800 comporta limite inicial de R$ 2.000 "
+            "sem risco de superendividamento. Evitar credito pessoal neste momento ? inadimplencia de 8,2% "
+            "sinaliza fragilidade de caixa. **Acao recomendada:** oferta proativa via push notification no app "
+            "com aprovacao instantanea e limite pre-aprovado."
+        ),
+    },
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nPerfil 'Premium Conservador': 87 clientes, idade media 54 anos, "
+            "renda R$ 19.000/mes, saldo R$ 142.000, score 835, inadimplencia 0,3%, uso digital 41%.\n\n"
+            "Pergunta: Como abordar este cliente sobre previdencia privada?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "O cliente Premium Conservador e o perfil ideal para PGBL. Abordagem recomendada: destacar o "
+            "**beneficio fiscal imediato** ? com renda de R$ 19.000/mes, a deducao de ate 12% da renda bruta "
+            "representa economia de ate R$ 27.360/ano no IR (tabela progressiva). Saldo de R$ 142.000 indica "
+            "patrimonio consolidado que busca protecao real. Score 835 e inadimplencia 0,3% confirmam "
+            "disciplina financeira. **Acao recomendada:** agendar reuniao presencial com gerente dedicado "
+            "? uso digital de 41% indica preferencia por atendimento exclusivo e personalizado."
+        ),
+    },
+]
+
+_FEWSHOT_PERSONA: List[Dict] = [
+    {
+        "role": "user",
+        "content": "O banco esta oferecendo um emprestimo pessoal com taxa de 2,9% ao mes. Voce toparia?",
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Depende muito do que eu preciso fazer com esse dinheiro. 2,9% ao mes parece pouco, mas no ano "
+            "da quase 42% ? isso e caro. Antes de assinar qualquer coisa eu calcularia o custo total, "
+            "nao so a parcela. Se for para uma emergencia real, eu pesaria. Para compra de desejo? "
+            "Provavelmente esperaria juntar o dinheiro primeiro."
+        ),
+    },
+    {
+        "role": "user",
+        "content": "Como voce se sente quando recebe uma oferta de produto financeiro por telefone?",
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Honestamente? Fico desconfiado. Prefiro muito mais ver as condicoes por escrito, no app ou no site, "
+            "do meu jeito e no meu tempo. Quando alguem liga tentando me convencer na hora, parece que estao "
+            "escondendo alguma coisa nas letras miudas. Se o produto for bom, ele vai continuar bom amanha "
+            "tambem ? nao preciso decidir em 3 minutos de chamada."
+        ),
+    },
+]
+
+_FEWSHOT_TWIN: List[Dict] = [
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nCliente adimplente, score 620, renda R$ 4.500, prefere agencia.\n\n"
+            "Pergunta: Voce investiria em Tesouro Direto?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Ja ouvi falar do Tesouro Direto, mas confesso que nunca mexi nisso. Com R$ 4.500 de renda, "
+            "depois de pagar as contas fixas sobra pouco ? uns R$ 400 por mes, quando sobra. Ficaria "
+            "mais tranquilo conversando pessoalmente com alguem do banco antes de colocar dinheiro em "
+            "qualquer investimento. O que me preocupa e: e se eu precisar do dinheiro antes do prazo?"
+        ),
+    },
+    {
+        "role": "user",
+        "content": (
+            "Contexto relevante:\nCliente inadimplente, score 420, renda variavel R$ 2.100.\n\n"
+            "Pergunta: O que voce acha do programa de renegociacao com 80% de desconto nos juros?"
+        ),
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "Isso seria uma saida que eu precisava. 80% de desconto nos juros? Eu toparia na hora ? "
+            "o que me paralisa e justamente os juros que so crescem. Com R$ 2.100 de renda, se a "
+            "parcela ficar em algo que eu consiga pagar todo mes sem apertar demais, eu assino. "
+            "O que eu quero e sair dessa situacao e recuperar meu nome. Tem como parcelar em bastantes vezes?"
+        ),
+    },
+]
+
+
+def _fewshot(modo: str) -> List[Dict]:
+    if modo == "segmento":
+        return _FEWSHOT_SEGMENTO
+    if modo == "persona":
+        return _FEWSHOT_PERSONA
+    if modo == "twin":
+        return _FEWSHOT_TWIN
+    return []
+
+
+def _despachar_tool(tool: Dict) -> str:
+    if tool["name"] == "consultar_feedback_nps":
+        inp = tool["input"]
+        return _consultar_athena_nps(
+            inp["tipo_consulta"], inp["identificador"], inp.get("produtos")
+        )
+    return "Ferramenta nao reconhecida."
+
+
+def _montar_tool_results(output_content: List[Dict]) -> List[Dict]:
+    results = []
+    for block in output_content:
+        if "toolUse" not in block:
+            continue
+        tool = block["toolUse"]
+        texto = _despachar_tool(tool) or "Sem dados disponiveis."
+        results.append({
+            "toolResult": {
+                "toolUseId": tool["toolUseId"],
+                "content": [{"text": texto}],
+            }
+        })
+    return results
+
+
+def _chamar_claude(system: str, contexto_rag: str, pergunta: str, modo: str = "segmento") -> str:
+    """Invoca Claude via Converse API com loop agentic tool_use para NPS Athena."""
+    conteudo = (f"Contexto relevante:\n{contexto_rag}\n\nPergunta: {pergunta}"
+                if contexto_rag else pergunta)
+
+    msgs = [{"role": t["role"], "content": [{"text": t["content"]}]} for t in _fewshot(modo)]
+    msgs.append({"role": "user", "content": [{"text": conteudo}]})
+
+    kwargs: Dict = {
+        "modelId": BEDROCK_MODEL_ID,
+        "system": [{"text": system}],
+        "inferenceConfig": {"maxTokens": 2048},
+    }
+    if _NPS_TOOL_CONFIG:
+        kwargs["toolConfig"] = _NPS_TOOL_CONFIG
+
+    for _ in range(6):  # max 5 round-trips tool_use
+        resp = _bedrock_client.converse(**kwargs, messages=msgs)
+        output_msg = resp["output"]["message"]
+        msgs.append(output_msg)
+
+        if resp["stopReason"] != "tool_use":
+            return next((b["text"] for b in output_msg["content"] if "text" in b), "")
+
+        tool_results = _montar_tool_results(output_msg["content"])
+        msgs.append({"role": "user", "content": tool_results})
+
+    return ""
+
+
+
+def _maybe_avaliar(ic: Dict, avaliar: bool, contextos: List[str], pergunta: str, resultado: str) -> None:
+    if not avaliar:
+        return
+    ic["avaliacao_llm"] = _avaliar_llm("\n\n".join(filter(None, contextos)), pergunta, resultado)
+
+
+def _executar_twin(pergunta: str, dados: Dict, cliente_id: str, payload: Dict, avaliar: bool) -> str:
+    cluster_id = payload.get("cluster_id")
+    if cluster_id is None and dados:
+        cluster_id = _classificar(dados)
+    cluster_id = int(cluster_id) if cluster_id is not None else 0
+    b = _rag_twin(cliente_id, pergunta)
+    s = _rag_graph_sync(cluster_id, pergunta)
+    g = _rag_graph(cluster_id, cliente_id, "twin")
+    d = _rag_documentos(pergunta)
+    e = _rag_entrevistas(cluster_id, cliente_id, "twin", pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d, e]))
+    resultado = _chamar_claude(_system_twin(cliente_id, dados), contexto, pergunta, modo="twin")
+    ic = _confiabilidade(b, s, g, resultado, d, e)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d, e], pergunta, resultado)
+    return json.dumps({"cliente_id": cliente_id, "modo": "twin", "resposta": resultado,
+                       "indice_confiabilidade": ic}, ensure_ascii=False)
+
+
+def _executar_persona(pergunta: str, dados: Dict, payload: Dict, avaliar: bool) -> str:
+    cluster_id = payload.get("cluster_id")
+    if cluster_id is None:
+        if not dados:
+            raise ValueError("Modo 'persona' requer 'cluster_id' ou 'dados_cliente'.")
+        cluster_id = _classificar(dados)
+    cluster_id = int(cluster_id)
+    b = _rag_segmento(cluster_id, pergunta)
+    s = _rag_graph_sync(cluster_id, pergunta)
+    g = _rag_graph(cluster_id, "", "persona")
+    d = _rag_documentos(pergunta)
+    e = _rag_entrevistas(cluster_id, "", "persona", pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d, e]))
+    resultado = _chamar_claude(_system_persona(cluster_id), contexto, pergunta, modo="persona")
+    ic = _confiabilidade(b, s, g, resultado, d, e)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d, e], pergunta, resultado)
+    p = _perfil(cluster_id)
+    return json.dumps({"cluster_id": cluster_id, "segmento": p.get("segmento", ""),
+                       "persona_nome": p.get("persona_nome", ""), "modo": "persona",
+                       "resposta": resultado, "indice_confiabilidade": ic}, ensure_ascii=False)
+
+
+def _executar_segmento(pergunta: str, dados: Dict, cliente_id: str, avaliar: bool) -> str:
+    ausentes = set(FEATURES) - set(dados.keys())
+    if ausentes:
+        raise ValueError(f"Campos ausentes em dados_cliente: {ausentes}")
+    cluster_id = _classificar(dados)
+    b = _rag_segmento(cluster_id, pergunta)
+    s = _rag_graph_sync(cluster_id, pergunta)
+    g = _rag_graph(cluster_id, cliente_id, "segmento")
+    d = _rag_documentos(pergunta)
+    e = _rag_entrevistas(cluster_id, cliente_id, "segmento", pergunta)
+    contexto = "\n\n".join(filter(None, [b, s, g, d, e]))
+    resultado = _chamar_claude(_system_segmento(cluster_id), contexto, pergunta, modo="segmento")
+    ic = _confiabilidade(b, s, g, resultado, d, e)
+    _maybe_avaliar(ic, avaliar, [b, s, g, d, e], pergunta, resultado)
+    p = _perfil(cluster_id)
+    return json.dumps({"cliente_id": cliente_id, "cluster_id": cluster_id,
+                       "segmento": p.get("segmento", ""), "modo": "segmento",
+                       "resposta": resultado, "indice_confiabilidade": ic}, ensure_ascii=False)
+
+
+def _executar(payload: Dict) -> str:
+    pergunta: str = payload["pergunta"]
+    modo: str = payload.get("modo", "segmento")
+    dados: Dict = payload.get("dados_cliente", payload.get("dados", {}))
+    cliente_id: str = payload.get("cliente_id", "")
+    avaliar: bool = ENABLE_LLM_JUDGE or bool(payload.get("avaliar"))
+
+    if modo == "twin":
+        return _executar_twin(pergunta, dados, cliente_id, payload, avaliar)
+    if modo == "persona":
+        return _executar_persona(pergunta, dados, payload, avaliar)
+    return _executar_segmento(pergunta, dados, cliente_id, avaliar)
+
+
+
+def _atualizar_status(request_id: str, status: str, resultado: str = None, erro: str = None):
+    agora = datetime.now(timezone.utc).isoformat()
+    expr = "SET #s = :s, atualizado_em = :a"
+    attrs = {":s": status, ":a": agora}
+    names = {"#s": "status"}
+    if resultado is not None:
+        expr += ", resultado = :r"
+        attrs[":r"] = resultado
+    if erro is not None:
+        expr += ", erro = :e"
+        attrs[":e"] = erro
+
+    _dynamodb.Table(TABLE_NAME).update_item(
+        Key={"request_id": request_id},
+        UpdateExpression=expr,
+        ExpressionAttributeValues=attrs,
+        ExpressionAttributeNames=names,
+    )
+
+
+def _notificar(request_id: str, status: str):
+    if not SNS_TOPIC_ARN:
+        return
+    _sns.publish(
+        TopicArn=SNS_TOPIC_ARN,
+        Subject=f"Agente LangChain: {status}",
+        Message=json.dumps({"request_id": request_id, "status": status}),
+    )
+
+
+
+def lambda_handler(event, context):
+    for record in event["Records"]:
+        payload = json.loads(record["body"])
+        request_id = payload["request_id"]
+
+        _atualizar_status(request_id, "PROCESSING")
+        try:
+            resultado = _executar(payload)
+            _atualizar_status(request_id, "COMPLETED", resultado=resultado)
+            _notificar(request_id, "COMPLETED")
+        except Exception:
+            erro = traceback.format_exc()
+            log.error("Erro ao processar request %s:\n%s", request_id, erro)
+            _atualizar_status(request_id, "FAILED", erro=erro)
+            _notificar(request_id, "FAILED")
+            raise

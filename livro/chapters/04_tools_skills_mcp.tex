@@ -1,53 +1,421 @@
 \chapter{Tools, Skills e MCP}
 \label{chap:tools_skills_mcp}
 
-\section{Escopo do capitulo}
-Ferramentas customizadas, protocolos MCP e integracao com fontes externas.
+% ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
 
-\section{Objetivos de aprendizagem}
+Para aproveitar este cap\'itulo, o leitor deve ter conclu\'ido:
+
 \begin{itemize}[leftmargin=*]
-  \item Entender os conceitos nucleares do tema.
-  \item Aplicar o tema em uma implementacao concreta do projeto.
-  \item Definir evidencias objetivas de qualidade e funcionamento.
+  \item Cap\'itulo~\ref{chap:agentes_langgraph_memoria} --- ciclo ReAct
+        e grafos de estado com LangGraph;
+  \item Familiaridade com fun\c{c}\~oes ass\'incronas em Python
+        (\texttt{async}/\texttt{await}).
 \end{itemize}
 
-\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop interno, segunda virada.
+O agente j\'a sabe raciocinar em ciclos (cap.~3). Agora ele precisa
+de m\~aos: ferramentas que consultam bancos de dados, APIs e fontes
+externas. O protocolo MCP \'e a linguagem padronizada com que o
+agente declara e invoca essas ferramentas --- a mesma linguagem que
+conectar\'a, nos cap\'itulos 7--10, ao pipeline de produ\c{c}\~ao.
+\end{quote}
+
+Este cap\'itulo apresenta tr\^es camadas de extensibilidade do agente:
+
 \begin{enumerate}[leftmargin=*]
-  \item Preparacao do ambiente e insumos.
-  \item Implementacao guiada do fluxo principal.
-  \item Validacao dos resultados esperados.
-  \item Registro de decisoes tecnicas e trade-offs.
+  \item \textbf{Tools nativas LangChain:} fun\c{c}\~oes Python decoradas
+        com \texttt{@tool} que o agente pode invocar diretamente;
+  \item \textbf{Skills compostas:} agrupamento de tools com contexto
+        de neg\'ocio embutido (ex.\ \textit{skill} de investimentos);
+  \item \textbf{MCP (\textit{Model Context Protocol}):} protocolo
+        padronizado pela Anthropic que expõe ferramentas via servidor
+        \texttt{stdio} ou HTTP, permitindo reutiliza\c{c}\~ao entre
+        agentes e equipes. No AWS Prescriptive Guidance, esta camada
+        corresponde ao padr\~ao de \textit{tool-based agents for servers}~\cite{awsagentic2025}.
 \end{enumerate}
 
-\section{Plano de testes do capitulo}
-\subsection{Teste funcional}
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
 \begin{itemize}[leftmargin=*]
-  \item Definir casos de entrada e saida esperada.
-  \item Verificar comportamento nominal e casos de erro.
+  \item Criar e registrar tools nativas no grafo LangGraph;
+  \item Diferenciar tool, skill e servidor MCP;
+  \item Implementar um servidor MCP com transporte \texttt{stdio}
+        usando a biblioteca \texttt{mcp};
+  \item Conectar um agente LangGraph a um servidor MCP externo;
+  \item Validar a integra\c{c}\~ao com casos de teste offline.
 \end{itemize}
 
-\subsection{Teste de desempenho}
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Tools nativas: fun\c{c}\~oes como a\c{c}\~oes do agente}
+
+No LangGraph\index{LangGraph}, uma \textit{tool}\index{tool (agente)|textbf}
+\'e qualquer fun\c{c}\~ao Python decorada com \texttt{@tool}
+do LangChain. O agente recebe a lista de tools no momento da
+constru\c{c}\~ao do grafo e decide, a cada n\'o de racioc\'inio
+ReAct\index{ReAct}, qual tool invocar e com quais argumentos.
+
+\begin{lstlisting}[language=Python,
+  caption={Tool nativa: consulta de saldo de cliente.},
+  label={lst:tool_nativa}]
+from langchain_core.tools import tool
+
+@tool
+def consultar_saldo(cliente_id: str) -> str:
+    """Retorna o saldo atual do cliente. Use quando o usuario perguntar
+    sobre saldo, limite ou posicao financeira."""
+    # Em producao: chamada ao DynamoDB ou API core bancario
+    saldos = {"C001": 15000.00, "C002": 8500.50, "C003": 22000.00}
+    saldo = saldos.get(cliente_id)
+    if saldo is None:
+        return f"Cliente {cliente_id} nao encontrado."
+    return f"Saldo do cliente {cliente_id}: R$ {saldo:,.2f}"
+\end{lstlisting}
+
+O \textit{docstring} da fun\c{c}\~ao \'e o que o LLM l\^e para
+decidir quando usar a tool. Docstrings claros e com exemplos de
+contexto de uso melhoram significativamente a precis\~ao do agente.
+
+\subsection{Skills: tools com contexto de neg\'ocio}
+
+Uma \textit{skill}\index{skill (agente)|textbf} \'e um conjunto de
+tools relacionadas que formam uma capacidade de neg\'ocio coesa.
+No projeto banc\'ario, a \textit{skill} de investimentos agrupa as
+tools de consulta de produtos, simula\c{c}\~ao de rendimento e
+recomenda\c{c}\~ao por perfil. A vantagem \'e que o agente pode
+ser instanciado com skills diferentes conforme o segmento do cliente,
+sem alterar a l\'ogica do grafo.
+
+\subsection{MCP: protocolo padronizado para ferramentas}
+\label{sec:mcp_protocolo}
+
+O \textit{Model Context Protocol}
+(MCP)\index{MCP (\textit{Model Context Protocol})|textbf} \'e um
+protocolo aberto que padroniza como servidores de ferramentas
+comunicam suas capacidades a agentes de IA~\cite{mcp2024}.
+A arquitetura tem tr\^es pap\'eis:
+
 \begin{itemize}[leftmargin=*]
-  \item Medir latencia ponta a ponta.
-  \item Medir uso estimado de tokens por execucao.
+  \item \textbf{Cliente MCP:} o agente (LangGraph, Claude Desktop,
+        etc.) que solicita ferramentas;
+  \item \textbf{Servidor MCP:} processo que expõe ferramentas via
+        \texttt{stdio} (padr\~ao para integra\c{c}\~ao local) ou
+        HTTP/SSE (para servidores remotos);
+  \item \textbf{Host:} orquestrador que gerencia a conex\~ao entre
+        cliente e servidor (ex.\ Claude Desktop, VS~Code MCP
+        extension).
 \end{itemize}
 
-\subsection{Teste de qualidade de resposta}
+A comunica\c{c}\~ao segue o protocolo JSON-RPC~2.0. O servidor
+responde a tr\^es opera\c{c}\~oes principais: \texttt{tools/list}
+(anuncia ferramentas), \texttt{tools/call} (executa uma ferramenta)
+e \texttt{resources/list} (expõe recursos est\'aticos).
+
+A vantagem do MCP sobre tools nativas \'e o \textbf{desacoplamento}:
+o servidor MCP pode ser desenvolvido em qualquer linguagem,
+versionado separadamente e reutilizado por m\'ultiplos agentes
+e equipes.
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Criar tools nativas e registrar no agente}
+
+Com base no grafo ReAct do cap\'itulo anterior, adicionamos tools
+espec\'ificas ao dominio banc\'ario:
+
+\begin{lstlisting}[language=Python,
+  caption={Tools nativas para o agente banc\'ario.},
+  label={lst:tools_bancarias}]
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+from langchain_aws import ChatBedrockConverse
+
+@tool
+def consultar_saldo(cliente_id: str) -> str:
+    """Retorna o saldo atual do cliente."""
+    saldos = {"C001": 15000.00, "C002": 8500.50}
+    s = saldos.get(cliente_id)
+    return f"R$ {s:,.2f}" if s else f"Cliente {cliente_id} nao encontrado."
+
+@tool
+def listar_produtos_investimento(perfil: str) -> str:
+    """Lista produtos de investimento adequados ao perfil.
+    Perfis validos: conservador, moderado, arrojado."""
+    catalogo = {
+        "conservador": ["Tesouro Selic", "CDB 100% CDI", "LCI isenta IR"],
+        "moderado":    ["Fundo Multimercado", "CRA", "Debentures"],
+        "arrojado":    ["Acoes growth", "FII", "COE estruturado"],
+    }
+    produtos = catalogo.get(perfil.lower(), [])
+    if not produtos:
+        return f"Perfil '{perfil}' nao reconhecido."
+    return "Produtos recomendados: " + ", ".join(produtos)
+
+llm = ChatBedrockConverse(
+    model="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+    region_name="us-east-1",
+)
+tools = [consultar_saldo, listar_produtos_investimento]
+agente = create_react_agent(llm, tools)
+\end{lstlisting}
+
+\subsection{Passo 2 --- Implementar servidor MCP com transporte stdio}
+
+O arquivo \texttt{mcp\_mock\_server.py} implementa um servidor MCP
+completo com dados mock, ideal para testes offline. A estrutura
+\'e composta por tr\^es partes:
+
+\begin{lstlisting}[language=Python,
+  caption={Estrutura do servidor MCP mock (simplificado).},
+  label={lst:mcp_server_estrutura}]
+import asyncio, json
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+import mcp.types as types
+
+server = Server("postgres-mock-server")
+
+@server.list_tools()
+async def list_tools() -> list[types.Tool]:
+    return [
+        types.Tool(
+            name="executar_query",
+            description="Executa query no banco mock.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tabela": {"type": "string"},
+                    "filtro": {"type": "object"}
+                },
+                "required": ["tabela"]
+            }
+        ),
+        types.Tool(name="listar_tabelas",
+                   description="Lista tabelas disponiveis.",
+                   inputSchema={"type": "object", "properties": {}}),
+    ]
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    if name == "listar_tabelas":
+        return [types.TextContent(type="text",
+                                  text=json.dumps(list(MOCK_DATA.keys())))]
+    # ... logica de execar_query
+
+async def main():
+    async with stdio_server() as (read, write):
+        await server.run(read, write,
+                         server.create_initialization_options())
+
+if __name__ == "__main__":
+    asyncio.run(main())
+\end{lstlisting}
+
+O transporte \texttt{stdio} significa que o agente inicia o servidor
+como subprocesso e se comunica via \texttt{stdin}/\texttt{stdout}.
+Essa arquitetura \'e \textbf{segura por padr\~ao}: sem portas abertas,
+sem autentica\c{c}\~ao de rede necess\'aria para uso local.
+
+\subsection{Passo 3 --- Conectar o agente ao servidor MCP}
+
+O LangGraph suporta conex\~ao a servidores MCP via
+\texttt{MultiServerMCPClient}. Em produ\c{c}\~ao, o servidor
+\texttt{mcp\_postgres\_server.py} conecta ao PostgreSQL real; em
+testes, usa-se o mock:
+
+\begin{lstlisting}[language=Python,
+  caption={Conex\~ao do agente ao servidor MCP.},
+  label={lst:mcp_client}]
+import asyncio
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+from langchain_aws import ChatBedrockConverse
+
+async def criar_agente_com_mcp():
+    async with MultiServerMCPClient({
+        "banco_mock": {
+            "command": "python",
+            "args": ["mcp_mock_server.py"],
+            "transport": "stdio",
+        }
+    }) as client:
+        tools = client.get_tools()
+        llm = ChatBedrockConverse(
+            model="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+            region_name="us-east-1",
+        )
+        agente = create_react_agent(llm, tools)
+        resultado = await agente.ainvoke({
+            "messages": [{"role": "user",
+                          "content": "Quais tabelas estao disponiveis?"}]
+        })
+        return resultado["messages"][-1].content
+
+if __name__ == "__main__":
+    print(asyncio.run(criar_agente_com_mcp()))
+\end{lstlisting}
+
+\subsection{Passo 4 --- Decis\~oes de projeto: tool nativa vs.\ MCP}
+
+A escolha entre tool nativa e servidor MCP deve seguir o crit\'erio
+de acoplamento:
+
+\begin{table}[htbp]
+\centering
+\caption{Crit\'erios de escolha: tool nativa vs.\ MCP}
+\label{tab:tool_vs_mcp}
+\begin{tabular}{lll}
+\toprule
+\textbf{Crit\'erio} & \textbf{Tool nativa} & \textbf{Servidor MCP} \\
+\midrule
+Deploy conjunto com agente & \checkmark & --- \\
+Reutilizavel por outros agentes & --- & \checkmark \\
+Linguagem diferente de Python & --- & \checkmark \\
+Dados sens\'iveis isolados & --- & \checkmark \\
+Latencia m\'inima & \checkmark & --- \\
+Versionamento independente & --- & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No projeto banc\'ario, tools de c\'alculo interno (\'indice de
+confiabilidade, formata\c{c}\~ao de resposta) s\~ao nativas; acesso
+a bases de dados (PostgreSQL, DynamoDB) \'e feito via MCP para
+garantir isolamento e auditabilidade.
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+% ---------------------------------------------------------------
+
+Marque V (verdadeiro) ou F (falso):
+
+\begin{enumerate}[leftmargin=*]
+  \item O \textit{docstring} da fun\c{c}\~ao decorada com
+        \texttt{@tool} n\~ao influencia o comportamento do agente. \\
+        \textbf{Gabarito: F} --- O \textit{docstring} \'e o texto
+        que o LLM l\^e para decidir quando e como usar a tool;
+        docstrings imprecisos reduzem a qualidade das decis\~oes.
+
+  \item No transporte \texttt{stdio}, o servidor MCP abre uma porta
+        TCP para receber chamadas do agente. \\
+        \textbf{Gabarito: F} --- No transporte \texttt{stdio}, a
+        comunica\c{c}\~ao ocorre via \texttt{stdin}/\texttt{stdout}
+        do subprocesso, sem portas de rede.
+
+  \item Um servidor MCP pode ser implementado em qualquer linguagem
+        que suporte JSON-RPC~2.0. \\
+        \textbf{Gabarito: V} --- O protocolo \'e independente de
+        linguagem; existem SDKs oficiais em Python, TypeScript,
+        Kotlin e Rust.
+
+  \item Tools nativas s\~ao sempre prefer\'iveis ao MCP por terem
+        menor lat\^encia. \\
+        \textbf{Gabarito: F} --- A lat\^encia menor n\~ao justifica
+        o acoplamento quando o recurso precisa ser isolado ou
+        reutilizado por outros agentes.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Medir aderencia ao contexto recuperado.
-  \item Medir consistencia da resposta com o objetivo do usuario.
+  \item Tools nativas s\~ao fun\c{c}\~oes Python com \texttt{@tool};
+        o \textit{docstring} guia a decis\~ao do LLM.
+  \item Skills agrupam tools relacionadas para uma capacidade de
+        neg\'ocio coesa.
+  \item MCP padroniza a comunica\c{c}\~ao entre agentes e servidores
+        de ferramentas via JSON-RPC~2.0.
+  \item O transporte \texttt{stdio} \'e a op\c{c}\~ao padr\~ao para
+        uso local, seguro e sem portas abertas.
+  \item A escolha tool nativa vs.\ MCP depende de acoplamento,
+        reutiliza\c{c}\~ao e necessidade de isolamento.
+  \item No projeto banc\'ario, acesso a dados sensíveis \'e sempre
+        mediado por servidores MCP.
 \end{itemize}
 
-\section{Criterios de aceite}
+% ---------------------------------------------------------------
+\section{Para saber mais}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Implementacao executa sem erros bloqueantes.
-  \item Testes definidos no capitulo atingem resultado esperado.
-  \item Evidencias de execucao sao anexadas pelos autores.
+  \item \citeonline{mcp2024} --- especifica\c{c}\~ao oficial do
+        \textit{Model Context Protocol}.
+  \item Reposit\'orio \texttt{langchain-mcp-adapters}:
+        \footnote{\url{https://github.com/langchain-ai/langchain-mcp-adapters}}
+        integra\c{c}\~ao oficial do LangGraph com servidores MCP.
+  \item \citeonline{langgraph2024} --- documenta\c{c}\~ao de tools
+        e \textit{tool calling} no LangGraph.
 \end{itemize}
 
-\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Testes funcionais}
+
 \begin{itemize}[leftmargin=*]
-  \item Notas de versao do capitulo.
-  \item Melhorias planejadas.
-  \item Lacunas para investigacao futura.
+  \item \textbf{TF-04-01:} invocar \texttt{consultar\_saldo} com
+        \texttt{cliente\_id="C001"} e verificar retorno
+        \texttt{"R\$ 15.000,00"}.
+  \item \textbf{TF-04-02:} invocar \texttt{listar\_tabelas} via
+        servidor MCP mock e verificar que retorna lista com
+        \texttt{["clientes","produtos","pedidos"]}.
+  \item \textbf{TF-04-03:} invocar \texttt{executar\_query} com
+        \texttt{filtro=\{"status":"entregue"\}} e verificar 2 registros.
+  \item \textbf{TF-04-04:} criar agente com as duas tools nativas e
+        verificar que responde corretamente \`a pergunta
+        \textit{``Qual o saldo do cliente C002?''}.
+\end{itemize}
+
+\subsection{Teste de isolamento}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TI-04-01:} verificar que o servidor MCP n\~ao abre
+        nenhuma porta de rede ao rodar com transporte \texttt{stdio}.
+  \item \textbf{TI-04-02:} verificar que tool com filtro
+        de cliente inexistente retorna mensagem de erro sem
+        exce\c{c}\~ao n\~ao tratada.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{mcp\_mock\_server.py} responde corretamente \`as tr\^es
+        opera\c{c}\~oes: \texttt{listar\_tabelas},
+        \texttt{descrever\_tabela} e \texttt{executar\_query}.
+  \item Agente com tools nativas invoca a tool correta para cada
+        tipo de pergunta (saldo vs.\ produtos).
+  \item Todos os testes TF-04-0x e TI-04-0x passam com
+        \texttt{python validate\_sprint\_a.py}.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v4.1:} servidor MCP com transporte HTTP/SSE para
+        deploy em container ECS.
+  \item \textbf{v4.2:} autent\'ica\c{c}\~ao OAuth 2.0 no servidor
+        MCP (requerido para acesso a dados PCI-DSS).
+  \item \textbf{Lacuna:} benchmark de lat\^encia tool nativa vs.\
+        MCP em cen\'ario de alta concorr\^encia.
 \end{itemize}

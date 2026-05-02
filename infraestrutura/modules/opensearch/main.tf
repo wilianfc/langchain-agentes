@@ -40,13 +40,13 @@ resource "aws_opensearch_domain" "main" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect    = "Allow"
+        Effect = "Allow"
         Principal = { AWS = concat(
           [var.worker_role_arn],
           var.extra_principal_arns
-        )}
-        Action    = "es:*"
-        Resource  = "arn:aws:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.project_name}-${var.environment}/*"
+        ) }
+        Action   = "es:*"
+        Resource = "arn:aws:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.project_name}-${var.environment}/*"
       }
     ]
   })

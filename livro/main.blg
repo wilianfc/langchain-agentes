@@ -1,0 +1,86 @@
+This is BibTeX, Version 0.99d (TeX Live 2022)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: main.aux
+A level-1 auxiliary file: chapters/00_prefacio.aux
+A level-1 auxiliary file: chapters/01_fundamentos_llm_ia.aux
+A level-1 auxiliary file: chapters/02_ambiente_e_reprodutibilidade.aux
+A level-1 auxiliary file: chapters/03_agentes_langgraph_memoria.aux
+A level-1 auxiliary file: chapters/04_tools_skills_mcp.aux
+A level-1 auxiliary file: chapters/05_rag_fundamentos.aux
+A level-1 auxiliary file: chapters/06_rag_corporativo.aux
+A level-1 auxiliary file: chapters/07_pipeline_assincrono_aws.aux
+A level-1 auxiliary file: chapters/08_segmentacao_personas_twins.aux
+A level-1 auxiliary file: chapters/09_graphrag_neptune.aux
+A level-1 auxiliary file: chapters/10_pipeline_integrado_producao.aux
+A level-1 auxiliary file: chapters/11_confiabilidade_observabilidade.aux
+A level-1 auxiliary file: chapters/12_avaliacao_metricas_mercado.aux
+A level-1 auxiliary file: chapters/13_llm_as_judge.aux
+A level-1 auxiliary file: chapters/14_golden_dataset_regressao.aux
+A level-1 auxiliary file: chapters/15_roadmap_producao.aux
+A level-1 auxiliary file: chapters/16_cicd_multiambiente_bancario.aux
+A level-1 auxiliary file: chapters/17_qualidade_seguranca_esteiras.aux
+A level-1 auxiliary file: chapters/18_frontend_cloudfront_console.aux
+A level-1 auxiliary file: chapters/99_apendice_template_capitulo.aux
+A level-1 auxiliary file: chapters/98_apendice_glossario_matematico.aux
+The style file: abntex2-num.bst
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 9000 items from 6000.
+Database file #1: abntex2-options.bib
+Database file #2: referencias.bib
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated glb_str_ptr (elt_size=4) to 20 items from 10.
+Reallocated global_strs (elt_size=200001) to 20 items from 10.
+Reallocated glb_str_end (elt_size=4) to 20 items from 10.
++---------------------------------------------------------+
+| Estilo bibliográfico abntex2-num.bst versão v-1.9.7           |
+| Em caso de dúvidas ou problemas com este estilo procure |
+| http://www.abntex.net.br/                               |
++---------------------------------------------------------+
+You've used 16 entries,
+            6714 wiz_defined-function locations,
+            1295 strings with 13102 characters,
+and the built_in function-call counts, 21847 in all, are:
+= -- 2577
+> -- 411
+< -- 525
++ -- 715
+- -- 122
+* -- 1376
+:= -- 2715
+add.period$ -- 65
+call.type$ -- 16
+change.case$ -- 179
+chr.to.int$ -- 31
+cite$ -- 15
+duplicate$ -- 2047
+empty$ -- 852
+format.name$ -- 648
+if$ -- 4419
+int.to.chr$ -- 0
+int.to.str$ -- 0
+missing$ -- 274
+newline$ -- 95
+num.names$ -- 60
+pop$ -- 402
+preamble$ -- 1
+purify$ -- 67
+quote$ -- 0
+skip$ -- 2160
+stack$ -- 1
+substring$ -- 998
+swap$ -- 741
+text.length$ -- 23
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 0
+warning$ -- 0
+while$ -- 101
+width$ -- 0
+write$ -- 211

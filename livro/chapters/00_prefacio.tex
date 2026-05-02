@@ -1,30 +1,85 @@
-\chapter*{Prefacio}
-\addcontentsline{toc}{chapter}{Prefacio}
+\chapter*{Pref\'acio}
+\addcontentsline{toc}{chapter}{Pref\'acio}
 
-Este livro propoe uma trilha pratica e incremental para construir sistemas com LLMs e IA,
-com foco em uso corporativo, RAG, avaliacao continua e governanca tecnica.
+Este livro conta uma hist\'oria. N\~ao \'e uma cole\c{c}\~ao de
+receitas isoladas: cada cap\'itulo introduz um personagem, uma tens\~ao
+ou uma virada que s\'o fazem sentido luz do que veio antes. O personagem
+central \'e um sistema de IA corporativo que nasce simples --- uma
+chamada ao LLM --- e amadurece progressivamente at\'e operar em
+produ\c{c}\~ao banc\'aria com rastreabilidade, avalia\c{c}\~ao cont\'inua
+e governan\c{c}a t\'ecnica. O leitor que acompanhar essa jornada
+cap\'itulo a cap\'itulo sair\'a capaz n\~ao apenas de reproduzir o
+c\'odigo, mas de tomar as mesmas decis\~oes de projeto --- e de
+justific\'a-las.
+
+\section*{A hist\'oria em dois ciclos}
+
+Toda plataforma de IA em produ\c{c}\~ao vive em dois ciclos
+interdependentes, que este livro chama de \textbf{loop interno} e
+\textbf{loop externo}.
+
+O \textbf{loop interno} (\textit{inner loop}) \'e o ciclo de
+\textit{desenvolvimento}: experimento, avalia\c{c}\~ao offline,
+valida\c{c}\~ao humana e promo\c{c}\~ao para produ\c{c}\~ao. Ele \'e
+onde o engenheiro vive --- no notebook, nos testes unit\'arios, na
+constru\c{c}\~ao do \textit{golden dataset}, na calibra\c{c}\~ao do
+juiz LLM. Os cap\'itulos 1 a 10 narram, passo a passo, a constru\c{c}\~ao
+desse loop.
+
+O \textbf{loop externo} (\textit{outer loop}) \'e o ciclo de
+\textit{produ\c{c}\~ao}: a plataforma responde a clientes reais, mede
+confiabilidade em tempo real, coleta evid\^encias e as devolve ao
+loop interno para reajuste. Os cap\'itulos 11 a 15 instrumentam esse
+ciclo --- observabilidade, m\'etricas de mercado, LLM-as-Judge,
+\textit{golden dataset} e \textit{roadmap} de evolu\c{c}\~ao cont\'inua.
+Os cap\'itulos 16 a 18 garantem que o ciclo se sustente com qualidade,
+seguran\c{c}a e CI/CD.
+
+Os dois loops n\~ao s\~ao seq\"uenciais: eles giram em paralelo e
+se alimentam mutuamente. O cap\'itulo 10 \'e o ponto de converg\^encia
+onde essa din\^amica se torna expl\'icita pela primeira vez.
 
 \section*{Como ler este livro}
+
 \begin{itemize}[leftmargin=*, noitemsep]
-  \item Cada capitulo possui teoria, implementacao guiada e plano de testes.
-  \item A complexidade evolui do basico para o avancado.
-  \item O objetivo e manter rastreabilidade entre conceito, codigo e evidencias.
+  \item \textbf{Leitura linear:} recomendada na primeira passagem.
+        Cada cap\'itulo pressup\~oe os anteriores; o glossario e os
+        pr\'e-requisitos de cada cap\'itulo indicam o m\'inimo
+        necess\'ario.
+  \item \textbf{Leitura por camada:} caps.\ 1--4 (fundamentos) $\to$
+        caps.\ 5--9 (plataforma) $\to$ caps.\ 10--14 (qualidade) $\to$
+        caps.\ 15--18 (opera\c{c}\~ao). Cada camada pode ser retomada
+        independentemente ap\'os a leitura completa.
+  \item \textbf{Rastreabilidade:} cada cap\'itulo mant\'em a tríade
+        \textit{conceito $\to$ implementa\c{c}\~ao $\to$ evidencia de
+        qualidade}. Os planos de teste e os crit\'erios de aceite s\~ao
+        parte do texto, n\~ao ap\^endice.
 \end{itemize}
 
-\section*{Indice proposto}
+\section*{\'Indice proposto}
+
+\noindent\textbf{Loop interno --- constru\c{c}\~ao} (caps.\ 1--10)
 \begin{enumerate}[leftmargin=*]
   \item Fundamentos de IA e LLMs
   \item Ambiente, ferramentas e reprodutibilidade
-  \item Agentes com LangGraph e memoria
+  \item Agentes com LangGraph e mem\'oria
   \item Tools, skills e MCP
   \item Fundamentos de RAG
   \item RAG corporativo e arquitetura de dados
-  \item Pipeline assincrono em AWS
-  \item Segmentacao, personas e digital twins
+  \item Pipeline ass\'incrono em AWS
+  \item Segmenta\c{c}\~ao, personas e digital twins
   \item GraphRAG com Neptune
-  \item Confiabilidade, observabilidade e operacao
-  \item Metricas de avaliacao de mercado
+  \item \textbf{Pipeline integrado em produ\c{c}\~ao} $\leftarrow$ \textit{ponto de converg\^encia}
+\end{enumerate}
+
+\noindent\textbf{Loop externo --- qualidade e opera\c{c}\~ao} (caps.\ 11--18)
+\begin{enumerate}[leftmargin=*, start=11]
+  \item Confiabilidade, observabilidade e opera\c{c}\~ao
+  \item M\'etricas de avalia\c{c}\~ao de mercado
   \item LLM as Judge
-  \item Golden dataset e regressao de qualidade
-  \item Roadmap de producao e evolucao continua
+  \item Golden dataset e regress\~ao de qualidade
+  \item Roadmap de produ\c{c}\~ao e evolu\c{c}\~ao cont\'inua
+  \item CI/CD multiambiente banc\'ario
+  \item Qualidade e seguran\c{c}a nas esteiras
+  \item Frontend, CloudFront e console de opera\c{c}\~ao
 \end{enumerate}

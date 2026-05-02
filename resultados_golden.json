@@ -1,0 +1,46 @@
+[
+  {
+    "id": "GD-001",
+    "segmento": "PF",
+    "categoria": "investimentos",
+    "rouge_l": 0.2857,
+    "judge_score": 10,
+    "aprovado_rouge": false,
+    "aprovado_judge": true,
+    "aprovado": false,
+    "resposta_gerada": "Para clientes conservadores, Tesouro Selic é a opção mais indicada pela liquidez imediata."
+  },
+  {
+    "id": "GD-002",
+    "segmento": "PF",
+    "categoria": "cartao",
+    "rouge_l": 0.3448,
+    "judge_score": 10,
+    "aprovado_rouge": true,
+    "aprovado_judge": true,
+    "aprovado": true,
+    "resposta_gerada": "O cartão gold dá pontos a cada compra e tem seguro viagem incluído."
+  },
+  {
+    "id": "GD-003",
+    "segmento": "PJ",
+    "categoria": "credito",
+    "rouge_l": 0.3448,
+    "judge_score": 7,
+    "aprovado_rouge": true,
+    "aprovado_judge": true,
+    "aprovado": true,
+    "resposta_gerada": "Para capital de giro, analisamos o faturamento da empresa nos últimos meses."
+  },
+  {
+    "id": "GD-004",
+    "segmento": "FP",
+    "categoria": "investimentos",
+    "rouge_l": 0.25,
+    "judge_score": 7,
+    "aprovado_rouge": false,
+    "aprovado_judge": true,
+    "aprovado": false,
+    "resposta_gerada": "Private banking oferece fundos exclusivos e gestão personalizada do patrimônio."
+  }
+]

@@ -1,0 +1,294 @@
+\chapter{Confiabilidade, Observabilidade e Opera\c{c}\~ao}
+\label{chap:confiabilidade_observabilidade}
+
+% ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item Cap\'itulo~\ref{chap:pipeline_integrado_producao} --- pipeline
+        completo em produ\c{c}\~ao com worker Lambda e DynamoDB;
+  \item Familiaridade com JSON e logs estruturados.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} in\'icio do loop externo.
+O sistema est\'a em produ\c{c}\~ao. Agora ele precisa ser observ\'avel:
+toda resposta deve ter uma medida de confiabilidade, todo erro deve
+ser rastreado, toda degrada\c{c}\~ao deve gerar alerta. Os cap\'itulos
+11 a 14 instrumentam o loop externo que alimentar\'a o loop interno
+com evid\^encias reais.
+\end{quote}
+
+Este cap\'itulo apresenta tr\^es camadas de observabilidade do sistema:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{\'Indice de confiabilidade:} m\'etrica estruturada
+        calculada por resposta, baseada em cobertura de fontes RAG
+        e sobreposi\c{c}\~ao l\'exica;
+  \item \textbf{Rastreabilidade com OpenTelemetry:} traces e spans
+        exportados ao Langfuse para depura\c{c}\~ao e auditoria;
+  \item \textbf{Oper\-a\c{c}\~ao e resili\^encia:} retentativas,
+        \textit{dead-letter queue} e monitoramento de estados no
+        DynamoDB.
+\end{enumerate}
+
+No AWS Prescriptive Guidance, essa disciplina corresponde ao padr\~ao de
+\textit{observer and monitoring agents}, com foco em telemetria, classifica\c{c}\~ao
+de eventos e a\c{c}\~oes de escalonamento~\cite{awsagentic2025}.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Calcular e interpretar o \'indice de confiabilidade a partir
+        das fontes RAG ativas;
+  \item Configurar OpenTelemetry com exporta\c{c}\~ao ao Langfuse;
+  \item Identificar as fontes de falha mais comuns e as estrat\'egias
+        de resili\^encia do pipeline;
+  \item Monitorar o ciclo de vida de uma requisi\c{c}\~ao usando os
+        estados do DynamoDB.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{\'Indice de confiabilidade}
+\label{sec:indice_confiabilidade}
+
+Em sistemas RAG, uma resposta sem contexto suficiente \'e t\~ao
+problem\'atica quanto uma resposta incorreta: o LLM pode alucinar
+para preencher lacunas. O \'indice de
+confiabilidade\index{\'indice de confiabilidade|textbf}
+quantifica, por resposta, \textit{quanto do contexto necess\'ario
+foi efetivamente recuperado}.
+
+O c\'alculo \'e dividido em duas dimens\~oes:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cobertura de fontes} (at\'e 0{,}95): cada camada RAG
+        ativa contribui um peso espec\'ifico (Tabela~\ref{tab:pesos_fontes});
+  \item \textbf{Sobreposi\c{c}\~ao l\'exica} (at\'e 0{,}15):
+        fra\c{c}\~ao de palavras-chave do contexto que aparecem na
+        resposta.
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\caption{Pesos das fontes RAG no \'indice de confiabilidade.}
+\label{tab:pesos_fontes}
+\begin{tabular}{llr}
+\toprule
+\textbf{Fonte} & \textbf{Descri\c{c}\~ao} & \textbf{Peso} \\
+\midrule
+\texttt{opensearch\_bm25}    & BM25 sobre documentos e entrevistas & 0{,}40 \\
+\texttt{neptune\_live}       & Grafo Neptune em tempo real          & 0{,}30 \\
+\texttt{neptune\_sync}       & Grafo sincronizado (replica\c{c}\~ao) & 0{,}15 \\
+\texttt{documentos\_knowledge} & \'Indice de pol\'iticas e FAQs     & 0{,}10 \\
+\texttt{entrevistas\_corpus}  & Corpus de entrevistas de clientes   & 0{,}10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O n\'ivel resultante \'e classificado como: \texttt{alto}
+($\geq 0{,}70$), \texttt{m\'edio} ($0{,}40$--$0{,}69$) ou
+\texttt{baixo} ($< 0{,}40$).
+
+\subsection{OpenTelemetry e Langfuse}
+
+O \textit{OpenTelemetry} (OTel)\index{OpenTelemetry} \'e o padr\~ao
+de observabilidade da CNCF para traces, m\'etricas e logs. O
+\texttt{otel\_config.py} configura automaticamente:
+
+\begin{itemize}[leftmargin=*]
+  \item Exporta\c{c}\~ao de traces ao \textit{Langfuse Cloud} via
+        OTLP/HTTP quando as vari\'aveis de ambiente
+        \texttt{LANGFUSE\_PUBLIC\_KEY} e
+        \texttt{LANGFUSE\_SECRET\_KEY} est\~ao presentes;
+  \item Auto-instrumenta\c{c}\~ao das chamadas Anthropic via
+        \texttt{openlit} (spans autom\'aticos para cada chamada ao
+        Bedrock);
+  \item \textbf{Modo silencioso:} se as chaves n\~ao estiverem
+        configuradas, o m\'odulo importa sem erro ---
+        \'util para desenvolvimento local.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- \'Indice de confiabilidade}
+
+A fun\c{c}\~ao \texttt{\_confiabilidade} do \texttt{worker.py}
+implementa o c\'alculo descrito na Se\c{c}\~ao~\ref{sec:indice_confiabilidade}:
+
+\begin{lstlisting}[language=Python,
+  caption={C\'alculo do \'indice de confiabilidade (worker.py).},
+  label={lst:indice_confiabilidade}]
+def _confiabilidade(bm25, sync, graph, resposta,
+                    documentos="", entrevistas=""):
+    fontes, cobertura = [], 0.0
+    if bm25.strip():
+        fontes.append("opensearch_bm25");  cobertura += 0.40
+    if graph.strip():
+        fontes.append("neptune_live");     cobertura += 0.30
+    if sync.strip():
+        fontes.append("neptune_sync");     cobertura += 0.15
+    if documentos.strip():
+        fontes.append("documentos_knowledge"); cobertura += 0.10
+    if entrevistas.strip():
+        fontes.append("entrevistas_corpus");   cobertura += 0.10
+
+    ctx = " ".join(filter(None,[bm25,sync,graph,documentos,entrevistas]))
+    overlap = 0.0
+    if ctx and resposta:
+        ctx_kw  = _palavras_chave(ctx)
+        resp_kw = _palavras_chave(resposta)
+        if ctx_kw and resp_kw:
+            overlap = min(len(ctx_kw & resp_kw)
+                          / min(len(ctx_kw), len(resp_kw)), 1.0)
+
+    score = round(min(cobertura + overlap * 0.15, 1.0), 2)
+    nivel = "alto" if score >= 0.70 else ("medio" if score >= 0.40
+                                           else "baixo")
+    return {"score": score, "nivel": nivel,
+            "fontes_ativas": fontes,
+            "detalhes": {"cobertura_fontes": round(cobertura,2),
+                         "sobreposicao_lexica": round(overlap,2)}}
+\end{lstlisting}
+
+A resposta ao cliente inclui sempre o campo \texttt{indice\_confiabilidade},
+permitindo que a camada de apresenta\c{c}\~ao decida se exibe um
+aviso ao usu\'ario para respostas com n\'ivel \texttt{baixo}.
+
+\subsection{Passo 2 --- Configurar observabilidade com OTel}
+
+\begin{lstlisting}[language=Python,
+  caption={Inicializa\c{c}\~ao do OTel no handler Lambda.},
+  label={lst:otel_init}]
+# Topo do worker.py, antes do handler
+from otel_config import init as init_otel
+init_otel()  # silencioso sem variaveis de ambiente
+\end{lstlisting}
+
+Para ativar o Langfuse, defina as vari\'aveis no Secrets Manager
+e injete no ambiente Lambda via \texttt{terraform.tfvars}:
+
+\begin{lstlisting}[language=bash,
+  caption={Vari\'aveis de ambiente para Langfuse.},
+  label={lst:langfuse_env}]
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_OTLP_ENDPOINT=https://cloud.langfuse.com/api/public/otel/v1/traces
+\end{lstlisting}
+
+\subsection{Passo 3 --- Estados da requisi\c{c}\~ao no DynamoDB}
+
+O ciclo de vida de uma requisi\c{c}\~ao \'e rastreado por estados
+no DynamoDB:
+
+\begin{lstlisting}[language=bash,
+  caption={Estados poss\'iveis de uma requisi\c{c}\~ao.},
+  label={lst:estados_dynamodb}]
+QUEUED      -> processamento iniciado
+PROCESSING  -> agente em execucao
+COMPLETED   -> resposta disponivel
+FAILED      -> erro nao recuperavel
+\end{lstlisting}
+
+O endpoint \texttt{/status/\{request\_id\}} (\texttt{status.py})
+consulta o DynamoDB e retorna o estado atual. Clientes implementam
+\textit{polling} com intervalo exponencial at\'e \texttt{COMPLETED}
+ou \texttt{FAILED}.
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+% ---------------------------------------------------------------
+
+\begin{enumerate}[leftmargin=*]
+  \item Uma resposta com \texttt{opensearch\_bm25} e
+        \texttt{neptune\_live} ativos, sem sobreposi\c{c}\~ao l\'exica,
+        tem \'indice de confiabilidade de quanto?\\
+        \textbf{Gabarito:} $0{,}40 + 0{,}30 + 0{,}00 \times 0{,}15 = 0{,}70$
+        $\to$ n\'ivel \texttt{alto}.
+
+  \item O OTel exporta traces para o Langfuse mesmo quando
+        \texttt{LANGFUSE\_PUBLIC\_KEY} n\~ao est\'a definido.\\
+        \textbf{Gabarito: F} --- o \texttt{otel\_config.py} s\'o
+        configura o exportador OTLP se ambas as chaves estiverem
+        presentes.
+
+  \item O estado \texttt{PROCESSING} no DynamoDB indica que a
+        resposta j\'a est\'a dispon\'ivel para o cliente.\\
+        \textbf{Gabarito: F} --- indica que o agente ainda est\'a em
+        execu\c{c}\~ao; o cliente deve continuar o \textit{polling}.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item O \'indice de confiabilidade combina cobertura de fontes
+        (at\'e 0{,}95) e sobreposi\c{c}\~ao l\'exica (at\'e 0{,}15).
+  \item \texttt{opensearch\_bm25} e \texttt{neptune\_live} s\~ao as
+        fontes de maior peso; sua aus\^encia sozinha j\'a classifica
+        a resposta como n\'ivel \texttt{m\'edio}.
+  \item OTel com Langfuse fornece visibilidade span-a-span das
+        chamadas ao Bedrock.
+  \item O modo silencioso do \texttt{otel\_config.py} garante que
+        o c\'odigo funcione sem chaves Langfuse no ambiente de
+        desenvolvimento.
+  \item Estados DynamoDB permitem \textit{polling} ass\'incrono
+        sem \textit{websocket}.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-11-01:} chamar \texttt{\_confiabilidade} com apenas
+        \texttt{bm25} ativo e verificar score $= 0{,}40$, n\'ivel
+        \texttt{m\'edio}.
+  \item \textbf{TC-11-02:} chamar com todas as 5 fontes ativas e
+        sobreposi\c{c}\~ao 1{,}0 e verificar score $= 1{,}00$.
+  \item \textbf{TC-11-03:} importar \texttt{otel\_config} sem
+        vari\'aveis Langfuse e verificar que nenhuma exce\c{c}\~ao
+        \'e lan\c{c}ada.
+  \item \textbf{TC-11-04:} verificar que o endpoint
+        \texttt{/status/\{id\}} retorna \texttt{404} para IDs
+        inexistentes.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{\_confiabilidade} passa todos os TC-11-0x.
+  \item \texttt{otel\_config.init()} executa sem erro em ambiente
+        local (validado por \texttt{validate\_sprint\_a.py}).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v11.1:} dashboard CloudWatch com alarme para
+        taxa de respostas n\'ivel \texttt{baixo} $> 10\%$.
+  \item \textbf{v11.2:} integra\c{c}\~ao com PagerDuty para falhas
+        em \textit{batch} cr\'itico.
+  \item \textbf{Lacuna:} meta-judge autom\'atico --- usar o
+        \'indice de confiabilidade como entrada do LLM Judge
+        do cap\'itulo~\ref{chap:llm_as_judge}.
+\end{itemize}

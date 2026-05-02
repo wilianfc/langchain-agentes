@@ -1,0 +1,226 @@
+[
+  {
+    "Chapter": "02_ambiente_e_reprodutibilidade.tex",
+    "File": "_api.ipynb"
+  },
+  {
+    "Chapter": "02_ambiente_e_reprodutibilidade.tex",
+    "File": "../model_data.json"
+  },
+  {
+    "Chapter": "02_ambiente_e_reprodutibilidade.tex",
+    "File": "Activate.ps1"
+  },
+  {
+    "Chapter": "02_ambiente_e_reprodutibilidade.tex",
+    "File": "demo_api.ipynb"
+  },
+  {
+    "Chapter": "02_ambiente_e_reprodutibilidade.tex",
+    "File": "deploy.tf"
+  },
+  {
+    "Chapter": "02_ambiente_e_reprodutibilidade.tex",
+    "File": "langchain.ipynb"
+  },
+  {
+    "Chapter": "04_tools_skills_mcp.tex",
+    "File": "_a.py"
+  },
+  {
+    "Chapter": "04_tools_skills_mcp.tex",
+    "File": "_server.py"
+  },
+  {
+    "Chapter": "04_tools_skills_mcp.tex",
+    "File": "mcp_mock_server.py"
+  },
+  {
+    "Chapter": "05_rag_fundamentos.tex",
+    "File": "_a.py"
+  },
+  {
+    "Chapter": "05_rag_fundamentos.tex",
+    "File": "/metadata.json"
+  },
+  {
+    "Chapter": "05_rag_fundamentos.tex",
+    "File": "matriz.sh"
+  },
+  {
+    "Chapter": "09_graphrag_neptune.tex",
+    "File": "indexar_documento.py"
+  },
+  {
+    "Chapter": "09_graphrag_neptune.tex",
+    "File": "popular_neptune.py"
+  },
+  {
+    "Chapter": "09_graphrag_neptune.tex",
+    "File": "seed_neptune_lambda.py"
+  },
+  {
+    "Chapter": "10_pipeline_integrado_producao.tex",
+    "File": "_api.ipynb"
+  },
+  {
+    "Chapter": "10_pipeline_integrado_producao.tex",
+    "File": "aws_pipeline_clientes.py"
+  },
+  {
+    "Chapter": "11_confiabilidade_observabilidade.tex",
+    "File": "_a.py"
+  },
+  {
+    "Chapter": "11_confiabilidade_observabilidade.tex",
+    "File": "_config.py"
+  },
+  {
+    "Chapter": "11_confiabilidade_observabilidade.tex",
+    "File": "status.py"
+  },
+  {
+    "Chapter": "11_confiabilidade_observabilidade.tex",
+    "File": "terraform.tf"
+  },
+  {
+    "Chapter": "11_confiabilidade_observabilidade.tex",
+    "File": "worker.py"
+  },
+  {
+    "Chapter": "12_avaliacao_metricas_mercado.tex",
+    "File": "_metricas.py"
+  },
+  {
+    "Chapter": "12_avaliacao_metricas_mercado.tex",
+    "File": "avaliar_metricas.py"
+  },
+  {
+    "Chapter": "13_llm_as_judge.tex",
+    "File": "_judge.py"
+  },
+  {
+    "Chapter": "13_llm_as_judge.tex",
+    "File": "llm_judge.py"
+  },
+  {
+    "Chapter": "14_golden_dataset_regressao.tex",
+    "File": "_baseline.json"
+  },
+  {
+    "Chapter": "14_golden_dataset_regressao.tex",
+    "File": "_dataset.py"
+  },
+  {
+    "Chapter": "14_golden_dataset_regressao.tex",
+    "File": "golden_baseline.json"
+  },
+  {
+    "Chapter": "14_golden_dataset_regressao.tex",
+    "File": "golden_dataset.py"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": ".github/workflows/ci.yml"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": ".github/workflows/deploy-homol.yml"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "backend.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "ci.yml"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "deploy-dev.yml"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "deploy-homol.yml"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "deploy-prod.yml"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "dev.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "envs/homol.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "homol.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "lambda_handler.py"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "main.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "outputs.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "prod.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "produto-lambda-segmentacao/terraform.tf"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "src/tests/test_unit.py"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "test_integration.py"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "test_unit.py"
+  },
+  {
+    "Chapter": "16_cicd_multiambiente_bancario.tex",
+    "File": "variables.tf"
+  },
+  {
+    "Chapter": "17_qualidade_seguranca_esteiras.tex",
+    "File": ".github/workflows/ci.yml"
+  },
+  {
+    "Chapter": "17_qualidade_seguranca_esteiras.tex",
+    "File": "bandit-report.json"
+  },
+  {
+    "Chapter": "17_qualidade_seguranca_esteiras.tex",
+    "File": "infraestrutura/modules/iam/lambda_segmentacao.tf"
+  },
+  {
+    "Chapter": "17_qualidade_seguranca_esteiras.tex",
+    "File": "resp.json"
+  },
+  {
+    "Chapter": "17_qualidade_seguranca_esteiras.tex",
+    "File": "src/tests/test_unit.py"
+  },
+  {
+    "Chapter": "18_frontend_cloudfront_console.tex",
+    "File": "app.js"
+  },
+  {
+    "Chapter": "18_frontend_cloudfront_console.tex",
+    "File": "config.js"
+  }
+]

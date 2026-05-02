@@ -37,3 +37,13 @@ output "neptune_reader_endpoint" {
   description = "Endpoint de leitura do cluster Neptune"
   value       = module.neptune.reader_endpoint
 }
+
+output "frontend_url" {
+  description = "URL da distribuição CloudFront do console web"
+  value       = "https://${module.cloudfront_frontend.distribution_domain_name}"
+}
+
+output "frontend_bucket_name" {
+  description = "Bucket S3 privado do frontend web"
+  value       = module.cloudfront_frontend.bucket_name
+}

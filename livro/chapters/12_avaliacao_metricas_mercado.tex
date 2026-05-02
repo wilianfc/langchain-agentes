@@ -1,0 +1,247 @@
+\chapter{M\'etricas de Avalia\c{c}\~ao de Mercado}
+\label{chap:avaliacao_metricas_mercado}
+
+% ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item Cap\'itulo~\ref{chap:confiabilidade_observabilidade} ---
+        \'indice de confiabilidade e observabilidade;
+  \item Python instalado localmente (sem depend\^encia de AWS para
+        ROUGE-L offline).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop externo, avalia\c{c}\~ao
+autom\'atica. O sistema est\'a em produ\c{c}\~ao e gera respostas.
+Agora precisamos medir, de forma sistem\'atica, qu\~ao boas s\~ao
+essas respostas. As m\'etricas deste cap\'itulo fornecem o insumo
+quantitativo para o LLM Judge (cap.~13) e o Golden Dataset (cap.~14).
+\end{quote}
+
+Este cap\'itulo explora tr\^es categorias de m\'etricas para
+sistemas RAG em dom\'inios corporativos: m\'etricas lexicais
+(\textbf{ROUGE-L}), m\'etricas sem\^anticas (\textbf{BERTScore})
+e avalia\c{c}\~ao gerada por LLM (\textbf{G-Eval}).
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Calcular ROUGE-L manualmente a partir da subseq\~uencia
+        comum m\'axima (LCS);
+  \item Interpretar scores de BERTScore em contexto financeiro;
+  \item Orquestrar avalia\c{c}\~ao G-Eval com Claude via Bedrock;
+  \item Escolher a m\'etrica adequada para cada cen\'ario (custo,
+        velocidade, fidelidade).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{ROUGE-L --- precis\~ao lexical}
+
+O ROUGE-L\index{ROUGE-L|textbf} (\textit{Recall-Oriented Understudy
+for Gisting Evaluation -- Longest Common Subsequence}) mede a
+fidelidade lexical entre a resposta gerada e uma resposta de
+refer\^encia. A f\'ormula \'e:
+
+$$\text{ROUGE-L} = \frac{2 \cdot P \cdot R}{P + R}
+  \qquad P = \frac{|LCS|}{|\hat{y}|}, \quad R = \frac{|LCS|}{|y|}$$
+
+onde $\hat{y}$ \'e a resposta gerada, $y$ a refer\^encia e
+$|LCS|$ o comprimento da maior subseq\~uencia comum em palavras.
+
+\paragraph{Vantagens:} determinista, sem depend\^encia de modelo,
+executa sem GPU, custo zero.
+\paragraph{Limita\c{c}\~oes:} n\~ao captura sin\^onimos; ``ap\'olice''
+e ``seguro'' s\~ao tratados como palavras distintas mesmo com
+significado equivalente no contexto financeiro.
+
+\subsection{BERTScore --- similaridade sem\^antica}
+
+O BERTScore\index{BERTScore} compara token a token os embeddings
+contextuais (BERT) de resposta e refer\^encia, calculando
+precis\~ao, recall e F1 sem\^anticos. \'E mais robusto que ROUGE-L
+para dom\'inios com sin\^onimos, mas exige GPU ou CPU com
+razo\'avel mem\'oria ($\approx$400\,MB de modelo).
+
+\subsection{G-Eval --- avalia\c{c}\~ao por LLM}
+
+G-Eval\index{G-Eval} usa um LLM externo (Claude no nosso caso)
+para avaliar a resposta com base em crit\'erios definidos em
+linguagem natural. No projeto, o modo \texttt{geval} do script
+\texttt{avaliar\_metricas.py} envia um prompt estruturado ao
+Bedrock com a pergunta, o contexto recuperado e a resposta gerada,
+solicitando scores em tr\^es dimens\~oes: relev\^ancia, fidelidade
+ao contexto e clareza.
+
+\subsection{Quando usar cada m\'etrica}
+
+\begin{table}[htbp]
+\centering
+\caption{Crit\'erios de sele\c{c}\~ao de m\'etrica por cen\'ario.}
+\label{tab:metricas_cenarios}
+\begin{tabular}{lllll}
+\toprule
+\textbf{M\'etrica} & \textbf{Custo} & \textbf{Velocidade}
+  & \textbf{Sem\^antica} & \textbf{Caso de uso} \\
+\midrule
+ROUGE-L   & zero   & muito r\'apido & n\~ao & CI/CD, baseline \\
+BERTScore & baixo  & r\'apido (GPU) & sim  & avalia\c{c}\~ao batch \\
+G-Eval    & m\'edio & lento (API)   & alta & curadoria humana \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- ROUGE-L offline (sem GPU, sem API)}
+
+O script \texttt{avaliar\_metricas.py} implementa ROUGE-L em Python
+puro, sem depend\^encias externas:
+
+\begin{lstlisting}[language=Python,
+  caption={ROUGE-L com LCS puro Python (\texttt{avaliar\_metricas.py}).},
+  label={lst:rouge_l}]
+def lcs(a: list[str], b: list[str]) -> int:
+    """Comprimento da maior subsequencia comum."""
+    m, n = len(a), len(b)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if a[i-1] == b[j-1]:
+                dp[i][j] = dp[i-1][j-1] + 1
+            else:
+                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+    return dp[m][n]
+
+def rouge_l(hipotese: str, referencia: str) -> float:
+    """F1 ROUGE-L entre hipotese e referencia."""
+    h = hipotese.lower().split()
+    r = referencia.lower().split()
+    if not h or not r:
+        return 0.0
+    c = lcs(h, r)
+    p = c / len(h)
+    rec = c / len(r)
+    if p + rec == 0:
+        return 0.0
+    return round(2 * p * rec / (p + rec), 4)
+\end{lstlisting}
+
+\subsection{Passo 2 --- Executar avalia\c{c}\~ao offline}
+
+\begin{lstlisting}[language=bash,
+  caption={Demo offline de ROUGE-L.},
+  label={lst:demo_offline}]
+python avaliar_metricas.py --modo offline
+# Saida esperada:
+# [ROUGE-L] "O cliente tem direito..." vs ref: 0.25
+# [ROUGE-L] "O limite padrao..."      vs ref: 0.40
+# [ROUGE-L] ""                        vs ref: 0.00
+\end{lstlisting}
+
+\subsection{Passo 3 --- Avalia\c{c}\~ao em lote com CSV}
+
+Para avaliar um conjunto de casos do golden dataset:
+
+\begin{lstlisting}[language=bash,
+  caption={Avalia\c{c}\~ao em lote via CSV.},
+  label={lst:avaliacao_batch}]
+# Formato: pergunta,referencia,hipotese
+python avaliar_metricas.py --modo batch --arquivo casos.csv
+
+# Saida por linha:
+# caso_01  ROUGE-L: 0.6720
+# caso_02  ROUGE-L: 0.3140  << abaixo do threshold 0.35
+\end{lstlisting}
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+% ---------------------------------------------------------------
+
+\begin{enumerate}[leftmargin=*]
+  \item ROUGE-L $= 1{,}00$ significa que a resposta \'e
+        semanticamente perfeita.\\
+        \textbf{Gabarito: F} --- significa apenas que a resposta
+        cont\'em as mesmas palavras que a refer\^encia na mesma
+        ordem; uma resposta sin\^onima com ROUGE-L baixo pode ser
+        igualmente correta.
+
+  \item Para qual cen\'ario G-Eval \'e mais adequado que ROUGE-L?\\
+        \textbf{Gabarito:} curadoria de casos duvidosos, onde a
+        opini\~ao de um LLM sofisticado substitui avalia\c{c}\~ao
+        humana cara.
+
+  \item Qual \'e o custo de infraestrutura do modo offline de
+        \texttt{avaliar\_metricas.py}?\\
+        \textbf{Gabarito:} zero --- executa sem API externa,
+        sem GPU, sem credenciais AWS.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item ROUGE-L \'e determinista e gratuito; \'e o baseline
+        de qualidade no CI/CD.
+  \item BERTScore captura sin\^onimos via embeddings contextuais;
+        indicado para avalia\c{c}\~ao batch com GPU.
+  \item G-Eval usa o LLM como avaliador; custo mais alto,
+        maior profundidade sem\^antica.
+  \item O script \texttt{avaliar\_metricas.py} unifica os tr\^es
+        modos com interface CLI consistente.
+  \item O threshold ROUGE-L varia por caso --- respostas curtas
+        e factuais toleram thresholds mais altos que respostas
+        explicativas.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-12-01:} \texttt{rouge\_l("a b c", "a b c")}
+        deve retornar $1{,}0$.
+  \item \textbf{TC-12-02:} \texttt{rouge\_l("", "a b")} deve
+        retornar $0{,}0$ sem exce\c{c}\~ao.
+  \item \textbf{TC-12-03:} modo \texttt{offline} deve exibir
+        3 scores ROUGE-L e encerrar com c\'odigo de sa\'ida $0$.
+  \item \textbf{TP-12-01:} 1.000 pares avaliados com ROUGE-L em
+        modo batch em menos de 5\,s.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{rouge\_l} passa TC-12-01 e TC-12-02.
+  \item Modo offline executa sem credenciais e imprime scores.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v12.1:} adicionar ROUGE-1 e ROUGE-2 para
+        compara\c{c}\~ao com benchmarks p\'ublicos.
+  \item \textbf{v12.2:} integrar DeepEval para \textit{answer
+        relevancy} e \textit{contextual precision}.
+  \item \textbf{Lacuna:} calibrar thresholds por segmento (PF vs.
+        PJ vs. FP) a partir de dados reais de produ\c{c}\~ao.
+\end{itemize}

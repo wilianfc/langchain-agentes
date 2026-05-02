@@ -20,10 +20,12 @@
 - **Benefício:** Base de conhecimento searchável
 
 #### 3. Longo Prazo (Persistente)
-- **Implementação:** MemPalace  
-- **Uso:** Decisões e contexto entre projetos
+- **Implementação:** MemPalace (`decisoes_projeto/mempalace.yaml`, palace em `./decisoes_projeto/`)
+- **Uso:** Decisões técnicas do projeto — persistem entre sessões, buscáveis semanticamente
+- **Drawers minerados:** 12 drawers de 7 arquivos de decisão
+- **Context loading:** 723 tokens no wake-up
 - **Score:** 96.6% no LongMemEval benchmark
-- **Benefício:** Memória verbatim navegável
+- **Benefício:** Memória verbatim navegável, busca semântica < 1s
 
 **Motivação:**
 Cada camada tem propósito específico, evitando overhead de reprocessar contextos grandes a cada interação.

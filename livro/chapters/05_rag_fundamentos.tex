@@ -1,53 +1,420 @@
 \chapter{Fundamentos de RAG}
 \label{chap:rag_fundamentos}
 
-\section{Escopo do capitulo}
-Ingestao de conhecimento, chunking, embeddings e retrieval inicial.
+% ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
 
-\section{Objetivos de aprendizagem}
+Para aproveitar este cap\'itulo, o leitor deve ter conclu\'ido:
+
 \begin{itemize}[leftmargin=*]
-  \item Entender os conceitos nucleares do tema.
-  \item Aplicar o tema em uma implementacao concreta do projeto.
-  \item Definir evidencias objetivas de qualidade e funcionamento.
+  \item Cap\'itulo~\ref{chap:fundamentos_llm_ia} --- tokeniza\c{c}\~ao,
+        janela de contexto e \textit{prompting};
+  \item Cap\'itulo~\ref{chap:agentes_langgraph_memoria} --- agentes
+        ReAct com LangGraph;
+  \item Conceito de vetores e produto interno (\'algebra linear b\'asica).
 \end{itemize}
 
-\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop interno, mem\'oria do agente.
+O agente j\'a age e usa ferramentas (caps.~3--4). Agora ele precisa
+de mem\'oria de longo prazo: documentos corporativos que n\~ao cabem
+no contexto do LLM. RAG \'e a ponte entre o conhecimento externo e
+a janela de contexto. Os cap\'itulos~6 e~9 aprofundar\~ao esse
+mecanismo com fontes heterog\^eneas e grafo de conhecimento.
+\end{quote}
+
+Este cap\'itulo cobre o pipeline b\'asico de
+\textit{Retrieval-Augmented Generation}\index{RAG|textbf}
+(RAG): ingest\~ao, \textit{chunking}, gera\c{c}\~ao de
+\textit{embeddings}, indexa\c{c}\~ao em FAISS e recupera\c{c}\~ao
+sem\^antica. O objetivo \'e construir, com c\'odigo execut\'avel
+localmente e sem depend\^encia de AWS, um pipeline RAG minimal
+que responde a perguntas usando documentos indexados.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Explicar por que RAG reduz alucina\c{c}\~ao em sistemas
+        de IA para dom\'inios espec\'ificos;
+  \item Implementar \textit{chunking} por par\'agrafos com controle
+        de tamanho;
+  \item Gerar e persistir \textit{embeddings} com FAISS;
+  \item Executar busca sem\^antica por similaridade de cosseno;
+  \item Construir um pipeline RAG completo: documento $\to$ chunks
+        $\to$ vetores $\to$ busca $\to$ resposta com cita\c{c}\~ao.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Por que RAG?}
+
+LLMs armazenam conhecimento nos par\^ametros durante o treinamento.
+Esse conhecimento \'e est\'atico: n\~ao atualiza ap\'os o \textit{cutoff}
+de treinamento e n\~ao cont\'em informa\c{c}\~ao propriet\'aria da
+organiza\c{c}\~ao. Em dom\'inios corporativos, a resposta correta
+depende de pol\'iticas atuais, contratos e dados que mudam com
+frequ\^encia --- incompat\'ivel com re-treinamento constante.
+
+RAG resolve esse problema em dois passos: (1) no momento da
+pergunta, recupera os fragmentos mais relevantes do reposit\'orio de
+documentos; (2) injeta esses fragmentos no \textit{prompt} como
+contexto, permitindo que o LLM gere uma resposta fundamentada.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=1.2cm and 1.8cm,
+  box/.style={draw, rounded corners, text width=2.8cm, align=center,
+              minimum height=0.8cm, font=\small},
+  arr/.style={-Stealth, thick}
+]
+  \node[box, fill=blue!10]  (doc)   {Documentos\\corporativos};
+  \node[box, fill=blue!10, right=of doc]  (chunk) {Chunking};
+  \node[box, fill=blue!10, right=of chunk](embed) {Embeddings};
+  \node[box, fill=blue!10, right=of embed](index) {\'Indice FAISS};
+
+  \node[box, fill=green!10, below=1.5cm of doc]  (query) {Pergunta\\do usu\'ario};
+  \node[box, fill=green!10, right=of query]       (qemb)  {Embedding\\da query};
+  \node[box, fill=green!10, right=of qemb]        (busca) {Busca por\\similaridade};
+  \node[box, fill=orange!15,right=of busca]       (ctx)   {Contexto\\recuperado};
+  \node[box, fill=orange!15,below=0.8cm of ctx]   (llm)   {LLM + Prompt\\com contexto};
+  \node[box, fill=orange!15,left=of llm]          (resp)  {Resposta\\com cita\c{c}\~ao};
+
+  \draw[arr] (doc)   -- (chunk);
+  \draw[arr] (chunk) -- (embed);
+  \draw[arr] (embed) -- (index);
+  \draw[arr] (query) -- (qemb);
+  \draw[arr] (qemb)  -- (busca);
+  \draw[arr] (index) -- (busca);
+  \draw[arr] (busca) -- (ctx);
+  \draw[arr] (ctx)   -- (llm);
+  \draw[arr] (llm)   -- (resp);
+\end{tikzpicture}
+\caption{Pipeline RAG: fase de ingest\~ao (azul) e fase de recupera\c{c}\~ao (verde/laranja).}
+\label{fig:pipeline_rag}
+\end{figure}
+
+\subsection{Chunking: dividir para indexar}
+
+Um documento t\'ipico tem centenas de par\'agrafos. Indexar o
+documento inteiro geraria um vetor \'unico que n\~ao captura
+nuances locais. O \textit{chunking}\index{chunking|textbf} divide
+o documento em fragmentos menores, cada um com sua pr\'opria
+representa\c{c}\~ao vetorial.
+
+A estrat\'egia adotada no projeto \'e \textbf{chunking por
+par\'agrafos com janela deslizante de tamanho fixo}:
+
+\begin{itemize}[leftmargin=*]
+  \item Par\'agrafos s\~ao delimitados por linhas em branco;
+  \item Chunks acumulam par\'agrafos at\'e atingir 400 palavras;
+  \item Par\'agrafos individuais maiores que 400 palavras n\~ao
+        s\~ao truncados (ficam em chunk pr\'oprio).
+\end{itemize}
+
+\subsection{Embeddings: representar significado em vetores}
+
+Um \textit{embedding}\index{embeddings|textbf} \'e um vetor
+denso de alta dimens\~ao ($d = 1536$ para os modelos da Bedrock)
+que representa o significado sem\^antico de um texto. Textos
+semanticamente similares geram vetores pr\'oximos no espa\c{c}o
+euclidiano, o que permite busca por similaridade eficiente.
+
+A similaridade entre dois vetores \'e medida pelo cosseno:
+
+$$\text{cos}(\mathbf{u}, \mathbf{v}) = \frac{\mathbf{u} \cdot \mathbf{v}}{\|\mathbf{u}\| \cdot \|\mathbf{v}\|}$$
+
+Vetores normalizados reduzem a busca de cosseno a um produto
+interno, que o FAISS\index{FAISS|textbf} executa com \'otimos
+de hardware (SIMD/BLAS).
+
+\subsection{FAISS: \'indice de vetores local}
+
+O \textit{Facebook AI Similarity Search}
+(FAISS)~\cite{faiss2017} \'e uma biblioteca de indexa\c{c}\~ao
+de vetores que funciona inteiramente em mem\'oria, sem
+necessidade de servidor externo. Para o loop interno
+(desenvolvimento offline), o FAISS \'e a op\c{c}\~ao natural:
+r\'apido, reproduz\'ivel e portável. Para o loop externo (produ\c{c}\~ao
+com concorr\^encia), o projeto migra para OpenSearch\index{OpenSearch}
+(Cap.~\ref{chap:rag_corporativo}).
+
+O \'indice \texttt{IndexFlatL2} armazena vetores sem compress\~ao e
+executa busca exata por dist\^ancia euclidiana. Para coleções de
+at\'e alguns milhares de documentos, a lat\^encia \'e desprez\'ivel
+($< 1$\,ms por busca).
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Preparar a cole\c{c}\~ao de documentos}
+
+Crie o diret\'orio \texttt{dados\_rag/documentos/} com arquivos
+de texto plano:
+
+\begin{lstlisting}[language=bash,
+  caption={Cole\c{c}\~ao m\'inima para o laborat\'orio de RAG.},
+  label={lst:rag_colecao}]
+dados_rag/
+  documentos/
+    politica_investimentos.txt
+    faq_cartao_credito.txt
+\end{lstlisting}
+
+Cada arquivo deve conter texto corrido em portugu\^es, sem
+metadados sens\'iveis. Campos de identifica\c{c}\~ao s\~ao passados
+separadamente na chamada de ingest\~ao.
+
+\subsection{Passo 2 --- Implementar chunking por par\'agrafos}
+
+\begin{lstlisting}[language=Python,
+  caption={Chunking por par\'agrafos com controle de tamanho.},
+  label={lst:rag_chunking}]
+import re
+
+CHUNK_SIZE = 400  # palavras por chunk
+
+def chunkar(texto: str, chunk_size: int = CHUNK_SIZE) -> list[str]:
+    """Divide texto em chunks de ~chunk_size palavras."""
+    paragrafos = [p.strip() for p in re.split(r"\n{2,}", texto)
+                  if p.strip()]
+    chunks, atual, contagem = [], [], 0
+    for par in paragrafos:
+        palavras = len(par.split())
+        if contagem + palavras > chunk_size and atual:
+            chunks.append("\n\n".join(atual))
+            atual, contagem = [], 0
+        atual.append(par)
+        contagem += palavras
+    if atual:
+        chunks.append("\n\n".join(atual))
+    return chunks
+
+# Teste rapido
+texto = open("dados_rag/documentos/politica_investimentos.txt",
+             encoding="utf-8").read()
+chunks = chunkar(texto)
+print(f"Documento dividido em {len(chunks)} chunks.")
+print(f"Tamanho medio: {sum(len(c.split()) for c in chunks)//len(chunks)} palavras/chunk")
+\end{lstlisting}
+
+\subsection{Passo 3 --- Gerar embeddings e indexar no FAISS}
+
+\begin{lstlisting}[language=Python,
+  caption={Indexa\c{c}\~ao de chunks com embeddings Bedrock e FAISS.},
+  label={lst:rag_faiss_index}]
+import faiss, numpy as np, json, os
+from langchain_aws import BedrockEmbeddings
+
+EMBEDDING_MODEL = "amazon.titan-embed-text-v2:0"
+INDEX_PATH = "faiss_index"
+
+def criar_indice(chunks: list[str], titulos: list[str]) -> None:
+    """Gera embeddings e persiste o indice FAISS com metadados."""
+    embedder = BedrockEmbeddings(
+        model_id=EMBEDDING_MODEL, region_name="us-east-1"
+    )
+    vetores = embedder.embed_documents(chunks)
+    matriz = np.array(vetores, dtype="float32")
+
+    # normalizar para busca por cosseno via produto interno
+    faiss.normalize_L2(matriz)
+    index = faiss.IndexFlatIP(matriz.shape[1])
+    index.add(matriz)
+
+    os.makedirs(INDEX_PATH, exist_ok=True)
+    faiss.write_index(index, f"{INDEX_PATH}/index.faiss")
+
+    # salvar metadados paralelos
+    meta = [{"titulo": t, "texto": c} for t, c in zip(titulos, chunks)]
+    with open(f"{INDEX_PATH}/metadata.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    print(f"Indice criado: {index.ntotal} vetores em {INDEX_PATH}/")
+\end{lstlisting}
+
+\subsection{Passo 4 --- Recuperar chunks por similaridade}
+
+\begin{lstlisting}[language=Python,
+  caption={Recupera\c{c}\~ao sem\^antica: query $\to$ top-k chunks.},
+  label={lst:rag_retrieval}]
+def recuperar(query: str, k: int = 3) -> list[dict]:
+    """Retorna os k chunks mais similares a query."""
+    embedder = BedrockEmbeddings(
+        model_id=EMBEDDING_MODEL, region_name="us-east-1"
+    )
+    index = faiss.read_index(f"{INDEX_PATH}/index.faiss")
+    with open(f"{INDEX_PATH}/metadata.json", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    q_vec = np.array([embedder.embed_query(query)], dtype="float32")
+    faiss.normalize_L2(q_vec)
+    scores, indices = index.search(q_vec, k)
+
+    resultados = []
+    for score, idx in zip(scores[0], indices[0]):
+        if idx >= 0:
+            resultados.append({
+                "score": float(score),
+                "titulo": meta[idx]["titulo"],
+                "texto": meta[idx]["texto"][:300],
+            })
+    return resultados
+\end{lstlisting}
+
+\subsection{Passo 5 --- Pipeline RAG completo com o agente}
+
+Com o \'indice criado, o agente pode usar a recupera\c{c}\~ao como
+tool e citar as fontes na resposta:
+
+\begin{lstlisting}[language=Python,
+  caption={Tool RAG integrada ao agente LangGraph.},
+  label={lst:rag_tool_agente}]
+from langchain_core.tools import tool
+
+@tool
+def buscar_documentos(query: str) -> str:
+    """Busca documentos corporativos relevantes para a query.
+    Use sempre que a pergunta depender de politicas, FAQs ou
+    regras de produto que nao estao no seu conhecimento."""
+    resultados = recuperar(query, k=3)
+    if not resultados:
+        return "Nenhum documento relevante encontrado."
+    partes = []
+    for r in resultados:
+        partes.append(
+            f"[Fonte: {r['titulo']} | score: {r['score']:.3f}]\n{r['texto']}"
+        )
+    return "\n\n---\n\n".join(partes)
+\end{lstlisting}
+
+Ao adicionar \texttt{buscar\_documentos} ao agente, o ciclo ReAct
+passa a funcionar como:
+\textit{Pergunta} $\to$ \textit{Reason: preciso de contexto}
+$\to$ \textit{Act: buscar\_documentos}
+$\to$ \textit{Observe: chunks recuperados}
+$\to$ \textit{Reason: agora posso responder}
+$\to$ \textit{Resposta com cita\c{c}\~ao da fonte}.
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+% ---------------------------------------------------------------
+
 \begin{enumerate}[leftmargin=*]
-  \item Preparacao do ambiente e insumos.
-  \item Implementacao guiada do fluxo principal.
-  \item Validacao dos resultados esperados.
-  \item Registro de decisoes tecnicas e trade-offs.
+  \item Qual \'e a principal vantagem de normalizar os vetores antes
+        de indexar no FAISS com \texttt{IndexFlatIP}? \\
+        \textbf{Gabarito:} a normaliza\c{c}\~ao transforma produto
+        interno em similaridade de cosseno, permitindo comparar
+        textos independentemente do comprimento (n\'umero de tokens).
+
+  \item Um chunk de 800 palavras \'e indexado como um \'unico vetor.
+        Isso prejudica a precis\~ao da recupera\c{c}\~ao? \\
+        \textbf{Gabarito: V} --- chunks muito longos diluem o sinal
+        sem\^antico; o vetor resultante representa uma m\'edia
+        imprecisa de v\'arios t\'opicos.
+
+  \item O FAISS \'e adequado para indexar milh\~oes de documentos em
+        produ\c{c}\~ao com m\'ultiplos usu\'arios concorrentes. \\
+        \textbf{Gabarito: F} --- para produ\c{c}\~ao com
+        concorr\^encia, o projeto usa OpenSearch, que oferece
+        persist\^encia, replica\c{c}\~ao e escalabilidade horizontal.
+
+  \item A tool \texttt{buscar\_documentos} deve ser chamada pelo agente
+        em toda requisi\c{c}\~ao, independentemente da pergunta. \\
+        \textbf{Gabarito: F} --- o agente decide quando chamar a tool
+        baseado no racioc\'inio ReAct; perguntas que o LLM consegue
+        responder com conhecimento param\'etrico n\~ao exigem recupera\c{c}\~ao.
 \end{enumerate}
 
-\section{Plano de testes do capitulo}
-\subsection{Teste funcional}
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Definir casos de entrada e saida esperada.
-  \item Verificar comportamento nominal e casos de erro.
+  \item RAG injeta conhecimento externo no \textit{prompt} em tempo
+        de execu\c{c}\~ao, eliminando a necessidade de re-treinamento.
+  \item \textit{Chunking} por par\'agrafos com janela de 400 palavras
+        equilibra granularidade e coer\^encia sem\^antica.
+  \item \textit{Embeddings} representam significado como vetores
+        densos; normalizar antes de indexar ativa busca por cosseno.
+  \item FAISS \'e ideal para o loop interno (offline); OpenSearch
+        \'e a op\c{c}\~ao de produ\c{c}\~ao.
+  \item A tool \texttt{buscar\_documentos} integra RAG ao ciclo
+        ReAct: o agente decide quando recuperar contexto.
+  \item O par \texttt{(score, t\'itulo)} em cada chunk permite que
+        a resposta cite a fonte, garantindo rastreabilidade.
 \end{itemize}
 
-\subsection{Teste de desempenho}
+% ---------------------------------------------------------------
+\section{Para saber mais}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Medir latencia ponta a ponta.
-  \item Medir uso estimado de tokens por execucao.
+  \item \citeonline{faiss2017} --- artigo original do FAISS com
+        benchmarks e algoritmos de quantiza\c{c}\~ao.
+  \item \citeonline{lewis2020rag} --- artigo fundacional de RAG
+        (\textit{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}).
+  \item Documenta\c{c}\~ao LangChain sobre \texttt{FAISS}
+        \textit{vectorstore}:
+        \footnote{\url{https://python.langchain.com/docs/integrations/vectorstores/faiss/}}
+  \item Cap\'itulo~\ref{chap:rag_corporativo} --- RAG com OpenSearch,
+        BM25 h\'ibrido e governan\c{c}a para fontes heterog\^eneas.
 \end{itemize}
 
-\subsection{Teste de qualidade de resposta}
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Medir aderencia ao contexto recuperado.
-  \item Medir consistencia da resposta com o objetivo do usuario.
+  \item \textbf{TC-05-01:} texto de 1.200 palavras em 6 par\'agrafos
+        deve gerar 3 chunks ($\approx$400 palavras cada).
+  \item \textbf{TC-05-02:} ap\'os indexar 5 chunks, busca pelo
+        primeiro chunk deve retornar \texttt{score} $\geq 0.90$ com
+        \texttt{IndexFlatIP} e vetores normalizados.
+  \item \textbf{TC-05-03:} busca por query sem\^anticamente distante
+        de todos os chunks deve retornar \texttt{score} $< 0.50$.
+  \item \textbf{TP-05-01:} latência de indexa\c{c}\~ao de 100 chunks
+        deve ser $<$\,5\,s em ambiente local (FAISS sem GPU).
+  \item \textbf{TQ-05-01:} agente com tool RAG deve citar o t\'itulo
+        da fonte na resposta para pergunta sobre pol\'itica de
+        investimentos.
 \end{itemize}
 
-\section{Criterios de aceite}
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Implementacao executa sem erros bloqueantes.
-  \item Testes definidos no capitulo atingem resultado esperado.
-  \item Evidencias de execucao sao anexadas pelos autores.
+  \item \texttt{chunkar(texto)} retorna lista n\~ao-vazia com chunks
+        de no m\'aximo 420 palavras (margem de 5\%).
+  \item \texttt{criar\_indice} e \texttt{recuperar} executam sem erros
+        em ambiente sem AWS (usando embeddings mock ou BedrockEmbeddings
+        com credenciais).
+  \item Todos os TC-05-0x passam com vetores sint\'eticos
+        (\texttt{validate\_sprint\_a.py}).
 \end{itemize}
 
-\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
 \begin{itemize}[leftmargin=*]
-  \item Notas de versao do capitulo.
-  \item Melhorias planejadas.
-  \item Lacunas para investigacao futura.
+  \item \textbf{v5.1:} chunking h\'ibrido com sobreposição (\textit{overlap})
+        de 50 palavras entre chunks adjacentes.
+  \item \textbf{v5.2:} re-ranking p\'os-recupera\c{c}\~ao com
+        \textit{cross-encoder} para melhorar precis\~ao top-1.
+  \item \textbf{Lacuna:} avalia\c{c}\~ao de \textit{recall} do pipeline:
+        dado um conjunto de perguntas com resposta conhecida, quantas
+        t\^em o chunk correto no top-3?
 \end{itemize}

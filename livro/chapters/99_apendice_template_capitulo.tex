@@ -16,6 +16,15 @@ Este apendice serve como guia de expansao iterativa para novos capitulos.
   \item Passo 3
 \end{enumerate}
 
+\section{Politica de autocontencao (obrigatoria)}
+\begin{itemize}[leftmargin=*]
+  \item Todo codigo citado no capitulo deve existir no projeto com caminho valido.
+  \item Cada comando deve executar sem dependencias impl\'icitas fora do reposit\'orio.
+  \item Sempre que houver \texttt{Plano de testes}, incluir evidencias de execucao no capitulo
+        ou referenciar artefatos no Ap\^endice~\ref{apendice:codigo_completo}.
+  \item Antes da versao final, executar: \texttt{pwsh -File livro/validar\_autocontencao.ps1}.
+\end{itemize}
+
 \section{Plano de testes}
 \begin{itemize}[leftmargin=*]
   \item Teste funcional

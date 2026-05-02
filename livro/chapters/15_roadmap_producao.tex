@@ -1,0 +1,152 @@
+\chapter{Roadmap de Produ\c{c}\~ao e Evolu\c{c}\~ao Cont\'inua}
+\label{chap:roadmap_producao}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop externo, fechando o ciclo.
+Os cap\'itulos 11--14 instrumentaram, mediram e testaram o sistema.
+Agora o loop externo entrega seu produto final: evid\^encias de qualidade
+que alimentam o loop interno. Este cap\'itulo mapeia o caminho da maturidade
+t\'ecnica e operacional --- de MVP a sistema de produ\c{c}\~ao sustent\'avel.
+\end{quote}
+
+Este cap\'itulo organiza o plano de evolu\c{c}\~ao do sistema em tr\^es
+dimens\~oes: (1) \textbf{maturidade t\'ecnica} (do FAISS local ao OpenSearch
+distribu\'ido); (2) \textbf{maturidade operacional} (do CI/CD manual ao
+gate de qualidade autom\'atico); (3) \textbf{maturidade de avalia\c{c}\~ao}
+(do ROUGE-L ao golden dataset com 50+ casos).
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Identificar em qual est\'agio de maturidade o sistema se encontra;
+  \item Priorizar evolu\c{c}\~oes com base em impacto e esfor\c{c}o;
+  \item Definir os marcos que justificam a migra\c{c}\~ao do loop interno
+        para o loop externo;
+  \item Planejar o fechamento do ciclo de melhoria cont\'inua.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Modelo de maturidade}
+% ---------------------------------------------------------------
+
+\subsection{N\'ivel 1 --- MVP Offline}
+
+\begin{itemize}[leftmargin=*]
+  \item FAISS local com documentos sint\'eticos;
+  \item Agente ReAct com LangGraph e tool RAG;
+  \item Avalia\c{c}\~ao manual por ROUGE-L offline;
+  \item Deploy: notebook local sem AWS.
+\end{itemize}
+
+\textbf{Crit\'erio de sa\'ida:} 4/4 casos do golden dataset passam em modo mock.
+
+\subsection{N\'ivel 2 --- Integra\c{c}\~ao AWS}
+
+\begin{itemize}[leftmargin=*]
+  \item Pipeline ass\'incrono: API Gateway $\to$ SQS $\to$ Lambda Worker
+        $\to$ DynamoDB;
+  \item OpenSearch substituindo FAISS em produ\c{c}\~ao;
+  \item OTel + Langfuse para traces;
+  \item CI/CD com gate de qualidade: ROUGE-L $\geq$ threshold por caso.
+\end{itemize}
+
+\textbf{Crit\'erio de sa\'ida:} p99 lat\^encia $< 30$\,s; zero regress\~oes
+no golden dataset ap\'os cada deploy.
+
+\subsection{N\'ivel 3 --- Produ\c{c}\~ao Sustent\'avel}
+
+\begin{itemize}[leftmargin=*]
+  \item Golden dataset $\geq$ 50 casos por segmento (PF/PJ/FP);
+  \item LLM Judge calibrado com $\kappa \geq 0{,}60$;
+  \item Dashboard CloudWatch com alarme para IC $< 0{,}40$ em mais
+        de 10\% das respostas;
+  \item Processo formal de expira\c{c}\~ao e atualiza\c{c}\~ao de
+        casos do golden dataset.
+\end{itemize}
+
+\textbf{Crit\'erio de sa\'ida:} equipe de produto consegue atualizar
+o golden dataset sem depend\^encia de engenharia.
+
+% ---------------------------------------------------------------
+\section{Prioriza\c{c}\~ao por impacto e esfor\c{c}o}
+% ---------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Backlog priorizado de evolu\c{c}\~ao do sistema.}
+\label{tab:roadmap_backlog}
+\begin{tabular}{llll}
+\toprule
+\textbf{Item} & \textbf{Impacto} & \textbf{Esfor\c{c}o} & \textbf{N\'ivel} \\
+\midrule
+Golden dataset 50 casos/segmento     & alto   & m\'edio & 3 \\
+Gate CI/CD com ROUGE-L               & alto   & baixo   & 2 \\
+Calibra\c{c}\~ao LLM Judge ($\kappa$) & alto  & alto    & 3 \\
+BM25 h\'ibrido no OpenSearch         & m\'edio & m\'edio & 2 \\
+Re-ranking com cross-encoder         & m\'edio & alto    & 3 \\
+Dashboard CloudWatch de IC           & m\'edio & baixo   & 2 \\
+Chunking com overlap                 & baixo  & baixo   & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{O ciclo de melhoria cont\'inua}
+% ---------------------------------------------------------------
+
+O modelo de evolu\c{c}\~ao deste sistema \'e circular, n\~ao linear:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Loop externo produz evid\^encias:} IC baixo, regress\~ao
+        no golden dataset, score do judge $< 7$.
+  \item \textbf{An\'alise de causa raiz:} qual camada falhou? Prompt?
+        RAG? Modelo? Segmenta\c{c}\~ao?
+  \item \textbf{Loop interno recebe insumos:} ajuste de prompt,
+        re-indexa\c{c}\~ao, atualiza\c{c}\~ao de pol\'iticas.
+  \item \textbf{Deploy com gate de qualidade:} o c\'odigo s\'o avan\c{c}a
+        se zero regress\~oes no golden dataset.
+  \item \textbf{Loop externo valida:} IC sobe, judge aprova, usu\'ario
+        satisfeito.
+\end{enumerate}
+
+Este ciclo transforma qualidade de software em qualidade de IA: n\~ao se
+trata apenas de c\'odigo correto, mas de respostas corretas para clientes reais.
+
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item Tr\^es n\'iveis de maturidade: MVP offline, integra\c{c}\~ao AWS,
+        produ\c{c}\~ao sustent\'avel.
+  \item Gate CI/CD e golden dataset s\~ao as entregas de maior impacto
+        por menor esfor\c{c}o.
+  \item A calibra\c{c}\~ao do LLM Judge fecha o ciclo de confian\c{c}a
+        na avalia\c{c}\~ao autom\'atica.
+  \item O loop de melhoria cont\'inua transforma evid\^encias de produ\c{c}\~ao
+        em melhorias no loop interno.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v15.1:} \textit{runbook} formal de incidente para IC
+        cr\'itico em produ\c{c}\~ao.
+  \item \textbf{v15.2:} modelo de maturidade certificado por terceiros
+        (ex.: framework de IA respons\'avel do Banco Central).
+  \item \textbf{v15.3:} colabora\c{c}\~ao multiagente \textit{peer-to-peer}
+        para cen\'arios de negocia\c{c}\~ao entre agentes de compliance,
+        risco e atendimento, reduzindo depend\^encia de orquestrador central~\cite{awsagentic2025}.
+  \item \textbf{Lacuna:} defini\c{c}\~ao de SLA por segmento (PF vs.\@ PJ)
+        e impacto no design do pipeline.
+\end{itemize}

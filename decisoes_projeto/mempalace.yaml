@@ -3,3 +3,19 @@ rooms:
 - name: general
   description: All project files
   keywords: []
+- name: comparacao_v7
+  description: Análise comparativa diagram_v7 vs implementação atual — lacunas e roadmap
+  files:
+    - 11_evolucao_diagrama_v7.md
+    - 12_estado_sessao_comparacao_v7.md
+  keywords:
+    - diagram_v7
+    - LLM Judge
+    - DeepEval
+    - PF PJ FP PJA
+    - Meta-Judge
+    - Golden Dataset
+    - HDBSCAN UMAP
+    - Few-Shot DB
+    - roadmap
+  last_updated: "2026-05-02"

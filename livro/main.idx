@@ -1,0 +1,192 @@
+\indexentry{Transformer|hyperindexformat{\textbf}}{2}
+\indexentry{arquitetura!Transformer|hyperpage}{2}
+\indexentry{PLN|hyperindexformat{\see{processamento de linguagem natural}}}{2}
+\indexentry{processamento de linguagem natural|hyperpage}{2}
+\indexentry{redes recorrentes|hyperpage}{2}
+\indexentry{self-attention|hyperindexformat{\textbf}}{2}
+\indexentry{aten\c{c}\~ao!self-attention|hyperpage}{2}
+\indexentry{softmax|hyperindexformat{\textbf}}{2}
+\indexentry{aten\c{c}\~ao!multi-head|hyperpage}{2}
+\indexentry{decoder|hyperpage}{2}
+\indexentry{token|hyperpage}{2}
+\indexentry{next-token prediction|hyperpage}{2}
+\indexentry{token|hyperpage}{3}
+\indexentry{segmenta\c{c}\~ao subpalavra|hyperpage}{3}
+\indexentry{Byte-Pair Encoding|hyperindexformat{\textbf}}{3}
+\indexentry{BPE|hyperindexformat{\see{Byte-Pair Encoding}}}{3}
+\indexentry{SentencePiece|hyperpage}{3}
+\indexentry{janela de contexto|hyperindexformat{\textbf}}{3}
+\indexentry{context window|hyperindexformat{\see{janela de contexto}}}{3}
+\indexentry{decodifica\c{c}\~ao|hyperpage}{3}
+\indexentry{temperatura (LLM)|hyperindexformat{\textbf}}{3}
+\indexentry{logits|hyperpage}{3}
+\indexentry{softmax|hyperpage}{3}
+\indexentry{top-p|hyperindexformat{\textbf}}{3}
+\indexentry{amostragem por n\'ucleo|hyperindexformat{\see{top-p}}}{3}
+\indexentry{top-k|hyperindexformat{\textbf}}{3}
+\indexentry{Amazon Bedrock|hyperindexformat{\textbf}}{4}
+\indexentry{Bedrock|hyperindexformat{\see{Amazon Bedrock}}}{4}
+\indexentry{IAM|hyperpage}{4}
+\indexentry{Identity and Access Management|hyperindexformat{\see{IAM}}}{4}
+\indexentry{prompt!system prompt|hyperindexformat{\textbf}}{5}
+\indexentry{few-shot|hyperindexformat{\textbf}}{6}
+\indexentry{prompt!few-shot|hyperpage}{6}
+\indexentry{fine-tuning|hyperindexformat{\textbf}}{6}
+\indexentry{Python|hyperpage}{8}
+\indexentry{AWS|hyperpage}{8}
+\indexentry{Terraform|hyperindexformat{\textbf}}{8}
+\indexentry{infraestrutura como c\'odigo|hyperindexformat{\see{Terraform}}}{8}
+\indexentry{reprodutibilidade|hyperindexformat{\textbf}}{9}
+\indexentry{infer\^encia|hyperpage}{9}
+\indexentry{ambiente virtual (Python)|hyperindexformat{\textbf}}{10}
+\indexentry{IAM|hyperpage}{10}
+\indexentry{Identity and Access Management|hyperindexformat{\see{IAM}}}{10}
+\indexentry{VPC|hyperindexformat{\textbf}}{11}
+\indexentry{Virtual Private Cloud|hyperindexformat{\see{VPC}}}{11}
+\indexentry{API Gateway|hyperindexformat{\textbf}}{11}
+\indexentry{SQS|hyperindexformat{\textbf}}{11}
+\indexentry{Simple Queue Service|hyperindexformat{\see{SQS}}}{11}
+\indexentry{Lambda (AWS)|hyperindexformat{\textbf}}{11}
+\indexentry{DynamoDB|hyperindexformat{\textbf}}{11}
+\indexentry{OpenSearch|hyperindexformat{\textbf}}{11}
+\indexentry{Neptune (AWS)|hyperindexformat{\textbf}}{11}
+\indexentry{agente (IA)|hyperindexformat{\textbf}}{14}
+\indexentry{LangGraph|hyperindexformat{\textbf}}{14}
+\indexentry{LangChain|hyperpage}{14}
+\indexentry{ReAct|hyperindexformat{\textbf}}{14}
+\indexentry{thought (ReAct)|hyperpage}{14}
+\indexentry{action (ReAct)|hyperpage}{14}
+\indexentry{observation (ReAct)|hyperpage}{14}
+\indexentry{mem\'oria!agentes|hyperpage}{14}
+\indexentry{vetor sem\^antico|hyperpage}{14}
+\indexentry{FAISS|hyperindexformat{\textbf}}{14}
+\indexentry{grafo dirigido|hyperpage}{15}
+\indexentry{TypedDict|hyperpage}{15}
+\indexentry{add\_messages|hyperpage}{15}
+\indexentry{MessagesState|hyperindexformat{\textbf}}{15}
+\indexentry{MemorySaver|hyperindexformat{\textbf}}{16}
+\indexentry{checkpointer|hyperpage}{16}
+\indexentry{thread\_id|hyperpage}{16}
+\indexentry{ferramenta (agente)|hyperindexformat{\textbf}}{16}
+\indexentry{@tool|hyperpage}{16}
+\indexentry{StateGraph|hyperindexformat{\textbf}}{17}
+\indexentry{ChatBedrock|hyperindexformat{\textbf}}{17}
+\indexentry{ToolNode|hyperindexformat{\textbf}}{17}
+\indexentry{recupera\c{c}\~ao sem\^antica|hyperindexformat{\textbf}}{18}
+\indexentry{FAISS|hyperpage}{18}
+\indexentry{Plan-and-Execute|hyperindexformat{\textbf}}{19}
+\indexentry{Reflexion|hyperindexformat{\textbf}}{21}
+\indexentry{Multi-Agent Supervisor|hyperindexformat{\textbf}}{23}
+\indexentry{AsyncPostgresSaver|hyperindexformat{\textbf}}{27}
+\indexentry{LangGraph|hyperpage}{29}
+\indexentry{tool (agente)|hyperindexformat{\textbf}}{29}
+\indexentry{ReAct|hyperpage}{29}
+\indexentry{skill (agente)|hyperindexformat{\textbf}}{30}
+\indexentry{MCP (\textit{Model Context Protocol})|hyperindexformat{\textbf}}{30}
+\indexentry{RAG|hyperindexformat{\textbf}}{37}
+\indexentry{chunking|hyperindexformat{\textbf}}{38}
+\indexentry{embeddings|hyperindexformat{\textbf}}{39}
+\indexentry{FAISS|hyperindexformat{\textbf}}{39}
+\indexentry{OpenSearch|hyperpage}{39}
+\indexentry{RAG|hyperindexformat{\textbf}}{46}
+\indexentry{indexacao (RAG)|hyperindexformat{\textbf}}{46}
+\indexentry{recuperacao semantica|hyperpage}{46}
+\indexentry{OpenSearch|hyperindexformat{\textbf}}{46}
+\indexentry{chunking|hyperindexformat{\textbf}}{48}
+\indexentry{reranking|hyperpage}{50}
+\indexentry{arquitetura assincrona|hyperindexformat{\textbf}}{51}
+\indexentry{API Gateway|hyperindexformat{\textbf}}{51}
+\indexentry{SQS|hyperindexformat{\textbf}}{51}
+\indexentry{DynamoDB|hyperindexformat{\textbf}}{51}
+\indexentry{fire-and-poll|hyperindexformat{\textbf}}{52}
+\indexentry{dead-letter queue|hyperpage}{55}
+\indexentry{persona (IA)|hyperindexformat{\textbf}}{56}
+\indexentry{digital twin|hyperindexformat{\textbf}}{56}
+\indexentry{clusterizacao|hyperindexformat{\textbf}}{56}
+\indexentry{K-Means|hyperindexformat{\textbf}}{56}
+\indexentry{padronizacao (ML)|hyperindexformat{\textbf}}{57}
+\indexentry{StandardScaler|hyperpage}{57}
+\indexentry{Neptune (AWS)|hyperindexformat{\textbf}}{62}
+\indexentry{OpenCypher|hyperindexformat{\textbf}}{62}
+\indexentry{GraphRAG|hyperindexformat{\textbf}}{63}
+\indexentry{path ranking|hyperpage}{66}
+\indexentry{K-Means|hyperpage}{68}
+\indexentry{StandardScaler|hyperpage}{68}
+\indexentry{OpenSearch|hyperpage}{68}
+\indexentry{digital twin|hyperpage}{68}
+\indexentry{Lambda (AWS)|hyperpage}{68}
+\indexentry{LangGraph|hyperpage}{68}
+\indexentry{digital twin|hyperpage}{68}
+\indexentry{indice de confiabilidade|hyperindexformat{\textbf}}{69}
+\indexentry{\'indice de confiabilidade|hyperindexformat{\textbf}}{74}
+\indexentry{OpenTelemetry|hyperpage}{74}
+\indexentry{ROUGE-L|hyperindexformat{\textbf}}{80}
+\indexentry{BERTScore|hyperpage}{80}
+\indexentry{G-Eval|hyperpage}{80}
+\indexentry{golden dataset|hyperindexformat{\textbf}}{90}
+\indexentry{integração contínua|hyperindexformat{\textbf}}{100}
+\indexentry{CI/CD|hyperindexformat{\textbf}}{100}
+\indexentry{AWS|hyperpage}{100}
+\indexentry{dev (ambiente)|hyperindexformat{\textbf}}{100}
+\indexentry{homol (ambiente)|hyperindexformat{\textbf}}{100}
+\indexentry{prod (ambiente)|hyperindexformat{\textbf}}{100}
+\indexentry{conta AWS separada|hyperpage}{100}
+\indexentry{Terraform|hyperpage}{100}
+\indexentry{Git Workflow|hyperindexformat{\textbf}}{100}
+\indexentry{GitHub Actions|hyperindexformat{\textbf}}{100}
+\indexentry{GitLab CI|hyperpage}{100}
+\indexentry{Terraform!workspace|hyperindexformat{\textbf}}{100}
+\indexentry{state backend|hyperindexformat{\textbf}}{100}
+\indexentry{AWS Well-Architected Framework|hyperpage}{101}
+\indexentry{IAM|hyperpage}{101}
+\indexentry{Lambda (AWS)|hyperpage}{101}
+\indexentry{API Gateway|hyperpage}{101}
+\indexentry{DynamoDB|hyperpage}{101}
+\indexentry{SQS|hyperpage}{101}
+\indexentry{OpenSearch|hyperpage}{101}
+\indexentry{Neptune (AWS)|hyperpage}{101}
+\indexentry{pull request|hyperpage}{101}
+\indexentry{versionamento semântico|hyperindexformat{\textbf}}{101}
+\indexentry{S3 (AWS)|hyperpage}{102}
+\indexentry{state file (Terraform)|hyperindexformat{\textbf}}{103}
+\indexentry{environment protection rules|hyperpage}{104}
+\indexentry{OIDC|hyperindexformat{\textbf}}{105}
+\indexentry{OpenID Connect|hyperindexformat{\see{OIDC}}}{105}
+\indexentry{superfície de ataque|hyperpage}{105}
+\indexentry{drift detection|hyperpage}{106}
+\indexentry{SNS (AWS)|hyperpage}{106}
+\indexentry{GitOps|hyperpage}{106}
+\indexentry{EKS (AWS)|hyperpage}{106}
+\indexentry{segurança (esteira)|hyperindexformat{\textbf}}{107}
+\indexentry{quality gate|hyperindexformat{\textbf}}{107}
+\indexentry{BACEN|hyperindexformat{\textbf}}{107}
+\indexentry{Banco Central do Brasil|hyperindexformat{\see{BACEN}}}{107}
+\indexentry{menor privilégio|hyperindexformat{\textbf}}{107}
+\indexentry{CloudTrail|hyperindexformat{\textbf}}{107}
+\indexentry{análise estática de segurança|hyperpage}{108}
+\indexentry{bandit (segurança)|hyperpage}{108}
+\indexentry{OWASP Top 10|hyperpage}{108}
+\indexentry{checkov|hyperpage}{108}
+\indexentry{tfsec|hyperpage}{108}
+\indexentry{IAM!menor privilégio|hyperpage}{108}
+\indexentry{AWS Access Analyzer|hyperpage}{108}
+\indexentry{testes de integração|hyperindexformat{\textbf}}{109}
+\indexentry{DAST|hyperindexformat{\textbf}}{114}
+\indexentry{API Gateway|hyperpage}{114}
+\indexentry{SBOM|hyperindexformat{\textbf}}{114}
+\indexentry{policy-as-code|hyperpage}{114}
+\indexentry{Open Policy Agent|hyperindexformat{\textbf}}{114}
+\indexentry{CloudFront|hyperindexformat{\textbf}}{115}
+\indexentry{S3 (AWS)|hyperpage}{115}
+\indexentry{RAG|hyperindexformat{\textbf}}{115}
+\indexentry{Origin Access Control|hyperindexformat{\textbf}}{115}
+\indexentry{request\_id|hyperpage}{116}
+\indexentry{config.js|hyperindexformat{\textbf}}{117}
+\indexentry{Textract|hyperindexformat{\textbf}}{119}
+\indexentry{Cognito|hyperindexformat{\textbf}}{120}
+\indexentry{Byte-Pair Encoding|hyperindexformat{\textbf}}{316}
+\indexentry{embedding|hyperindexformat{\textbf}}{317}
+\indexentry{logits|hyperindexformat{\textbf}}{317}
+\indexentry{SentencePiece|hyperindexformat{\textbf}}{317}
+\indexentry{softmax|hyperindexformat{\textbf}}{318}
+\indexentry{WordPiece|hyperindexformat{\textbf}}{318}

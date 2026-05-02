@@ -1,0 +1,109 @@
+\providecommand{\abntreprintinfo}[1]{%
+ \citeonline{#1}}
+\begin{thebibliography}{}
+\providecommand{\abntrefinfo}[3]{}
+\providecommand{\abntbstabout}[1]{}
+\abntbstabout{v-1.9.7 }
+
+\bibitem{wei2022chain}
+\abntrefinfo{Wei et al.}{WEI et al.}{2022}
+{WEI, J. et al. Chain-of-thought prompting elicits reasoning in large language
+  models.
+\emph{Advances in Neural Information Processing Systems}, v.~35, p.
+  24824--24837, 2022.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2201.11903}.}
+
+\bibitem{vaswani2017attention}
+\abntrefinfo{Vaswani et al.}{VASWANI et al.}{2017}
+{VASWANI, A. et al. Attention is all you need.
+\emph{Advances in Neural Information Processing Systems}, v.~30, 2017.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/1706.03762}.}
+
+\bibitem{wei2022emergent}
+\abntrefinfo{Wei et al.}{WEI et al.}{2022}
+{WEI, J. et al. Emergent abilities of large language models.
+\emph{Transactions on Machine Learning Research}, 2022.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2206.07682}.}
+
+\bibitem{tiktoken2023}
+\abntrefinfo{{OpenAI}}{{OpenAI}}{2023}
+{{OpenAI}. \emph{tiktoken: Fast {BPE} tokeniser for use with {OpenAI} models}.
+  2023.
+Acessado em: maio de 2026.
+Dispon{\'\i}vel em: \url{https://github.com/openai/tiktoken}.}
+
+\bibitem{anthropic2024prompting}
+\abntrefinfo{{Anthropic}}{{Anthropic}}{2024}
+{{Anthropic}. \emph{Prompt Engineering Guide for {Claude}}. 2024.
+Acessado em: maio de 2026.
+Dispon{\'\i}vel em:
+  \url{https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview}.}
+
+\bibitem{langgraph2024}
+\abntrefinfo{{LangChain AI}}{{LangChain AI}}{2024}
+{{LangChain AI}. \emph{{LangGraph}: Build stateful, multi-actor applications
+  with {LLMs}}. 2024.
+Acessado em: maio de 2026.
+Dispon{\'\i}vel em: \url{https://github.com/langchain-ai/langgraph}.}
+
+\bibitem{chase2022langchain}
+\abntrefinfo{Chase}{CHASE}{2022}
+{CHASE, H. \emph{{LangChain}: Building applications with {LLMs} through
+  composability}. 2022.
+Acessado em: maio de 2026.
+Dispon{\'\i}vel em: \url{https://github.com/langchain-ai/langchain}.}
+
+\bibitem{yao2023react}
+\abntrefinfo{Yao et al.}{YAO et al.}{2023}
+{YAO, S. et al. {ReAct}: Synergizing reasoning and acting in language models.
+2023.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2210.03629}.}
+
+\bibitem{awsagentic2025}
+\abntrefinfo{Sempf e Hooker}{SEMPF; HOOKER}{2025}
+{SEMPF, A.; HOOKER, A. \emph{{AWS Prescriptive Guidance}: Agentic {AI} patterns
+  and workflows on {AWS}}. 2025. Amazon Web Services.
+Acessado em: maio de 2026.
+Dispon{\'\i}vel em:
+  \url{https://docs.aws.amazon.com/prescriptive-guidance/latest/agentic-ai-patterns/}.}
+
+\bibitem{johnson2019billion}
+\abntrefinfo{Johnson, Douze e J{\'e}gou}{JOHNSON; DOUZE; J{\'E}GOU}{2019}
+{JOHNSON, J.; DOUZE, M.; J{\'E}GOU, H. Billion-scale similarity search with
+  {GPUs}.
+\emph{IEEE Transactions on Big Data}, v.~7, n.~3, p. 535--547, 2019.}
+
+\bibitem{shinn2023reflexion}
+\abntrefinfo{Shinn et al.}{SHINN et al.}{2023}
+{SHINN, N. et al. Reflexion: Language agents with verbal reinforcement
+  learning.
+\emph{arXiv preprint arXiv:2303.11366}, 2023.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2303.11366}.}
+
+\bibitem{mcp2024}
+\abntrefinfo{{Anthropic}}{{Anthropic}}{2024}
+{{Anthropic}. \emph{Model Context Protocol Specification}. 2024.
+  \url{https://modelcontextprotocol.io/}.
+Acessado em: maio de 2026.}
+
+\bibitem{faiss2017}
+\abntrefinfo{Johnson, Douze e J{\'e}gou}{JOHNSON; DOUZE; J{\'E}GOU}{2021}
+{JOHNSON, J.; DOUZE, M.; J{\'E}GOU, H. Billion-scale similarity search with
+  {GPUs}.
+\emph{IEEE Transactions on Big Data}, v.~7, n.~3, p. 535--547, 2021.}
+
+\bibitem{lewis2020rag}
+\abntrefinfo{Lewis et al.}{LEWIS et al.}{2020}
+{LEWIS, P. et al. Retrieval-augmented generation for knowledge-intensive {NLP}
+  tasks.
+\emph{Advances in Neural Information Processing Systems}, v.~33, p. 9459--9474,
+  2020.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2005.11401}.}
+
+\bibitem{llm_judge2023}
+\abntrefinfo{Zheng et al.}{ZHENG et al.}{2023}
+{ZHENG, L. et al. Judging {LLM-as-a-Judge} with {MT-Bench} and chatbot arena.
+\emph{arXiv preprint arXiv:2306.05685}, 2023.
+Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2306.05685}.}
+
+\end{thebibliography}

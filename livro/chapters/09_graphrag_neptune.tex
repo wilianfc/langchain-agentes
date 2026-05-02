@@ -5,11 +5,22 @@
 \section{Escopo do capitulo}
 % ---------------------------------------------------------------
 
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop interno, mem\'oria relacional.
+RAG textual recupera fragmentos; grafo recupera rela\c{c}\~oes. Perguntas
+como ``quais produtos o cliente usa que s\~ao compar\'aveis com seu segmento?''
+exigem travessias multi-hop imposs\'iveis de indexar como texto plano.
+GraphRAG com Neptune \'e a \'ultima pe\c{c}a do loop interno antes da
+converg\^encia no cap.~10.
+\end{quote}
+
 Este capitulo apresenta, em formato de laboratorio, a extensao do RAG para
 contexto em grafo, combinando recuperacao textual com inferencia de relacoes
 multi-hop em Amazon Neptune\index{Neptune (AWS)|textbf}. O objetivo consiste
 em responder perguntas que dependem de conexoes entre entidades (cliente,
 produto, segmento, persona, canal), nao apenas de similaridade textual.
+No guia da AWS, esse desenho aparece como camada de mem\'oria aumentada
+de longo prazo estruturada, com men\c{c}\~ao explicita ao uso de Neptune~\cite{awsagentic2025}.
 
 % ---------------------------------------------------------------
 \section{Objetivos de aprendizagem}

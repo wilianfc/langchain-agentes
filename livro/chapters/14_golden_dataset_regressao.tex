@@ -1,0 +1,315 @@
+\chapter{Golden Dataset e Regress\~ao de Qualidade}
+\label{chap:golden_dataset_regressao}
+
+% ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item Cap\'itulo~\ref{chap:avaliacao_metricas_mercado} ---
+        ROUGE-L e thresholds de qualidade;
+  \item Cap\'itulo~\ref{chap:llm_as_judge} --- LLM Judge e rubrica;
+  \item Conceito de integra\c{c}\~ao cont\'inua (CI/CD).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop externo, regress\~ao
+autom\'atica. As m\'etricas e o judge est\~ao prontos. Falta o
+elo final: um conjunto curado de casos de teste que detecta
+regress\~oes antes que cheguem a produ\c{c}\~ao. O golden dataset
+\'e a mem\'oria coletiva de qualidade do sistema.
+\end{quote}
+
+Este cap\'itulo cobre: (1) o que \'e um golden dataset e como
+constru\'i-lo; (2) execu\c{c}\~ao de regress\~ao com
+\texttt{golden\_dataset.py}; (3) interpreta\c{c}\~ao do diff
+(regress\~oes vs.\@ melhorias); (4) integra\c{c}\~ao com CI/CD.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Definir os crit\'erios de curadoria de um golden dataset;
+  \item Criar casos com thresholds por pergunta;
+  \item Executar uma su\'ite de regress\~ao e interpretar o
+        relat\'orio;
+  \item Identificar a diferen\c{c}a entre regress\~ao e melhoria
+        no diff de qualidade.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{O que \'e um golden dataset?}
+
+Um \textit{golden dataset}\index{golden dataset|textbf} \'e um
+conjunto de casos de teste curados manualmente, com:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Pergunta:} representativa de uso real em produ\c{c}\~ao;
+  \item \textbf{Resposta de refer\^encia:} aprovada por especialistas
+        de dom\'inio (analistas de produto ou compliance);
+  \item \textbf{Thresholds individuais:} cada caso tem seu pr\'oprio
+        limiar ROUGE-L e score m\'inimo do judge, refletindo o
+        n\'ivel de fidelidade esperado para aquele tipo de pergunta.
+\end{itemize}
+
+Ao contr\'ario de benchmarks p\'ublicos, o golden dataset \'e
+\textbf{propriet\'ario e confidencial}: cont\'em a expectativa de
+qualidade negociada entre engenharia e neg\'ocio.
+
+\subsection{Curadoria: sintético vs.\@ humano}
+
+\begin{table}[htbp]
+\centering
+\caption{Compara\c{c}\~ao de estrat\'egias de curadoria.}
+\label{tab:curadoria}
+\begin{tabular}{lll}
+\toprule
+\textbf{Estrat\'egia} & \textbf{Vantagem} & \textbf{Limita\c{c}\~ao} \\
+\midrule
+Manual (humano)  & alta fidelidade de dom\'inio  & caro, lento \\
+Sint\'etico (LLM) & escal\'avel, r\'apido         & pode herdar vi\'eses do LLM \\
+H\'ibrido        & equil\'ibrio de custo/qualidade & requer revis\~ao humana \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O projeto adota a estrat\'egia h\'ibrida: perguntas geradas
+sinteticamente com respostas de refer\^encia revisadas por
+especialistas.
+
+\subsection{Regress\~ao vs.\@ melhoria}
+
+O diff compara os resultados atuais com os resultados do baseline
+salvo. Um caso pode transitar de tr\^es formas:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Regress\~ao:} passou antes, falhou agora
+        $\to$ bloquear release;
+  \item \textbf{Melhoria:} falhou antes, passou agora
+        $\to$ atualizar threshold;
+  \item \textbf{Estabilidade:} mesmo resultado $\to$ sem a\c{c}\~ao.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Estrutura de um caso do golden dataset}
+
+\begin{lstlisting}[language=Python,
+  caption={Estrutura de um caso no \texttt{golden\_dataset.py}.},
+  label={lst:golden_caso}]
+CASOS = [
+    {
+        "id": "GD-001",
+        "segmento": "PF",
+        "pergunta": "Qual e a rentabilidade do CDB prefixado de 12 meses?",
+        "referencia": (
+            "O CDB prefixado de 12 meses oferece rentabilidade de 12,5% ao ano, "
+            "garantida pelo FGC ate R$ 250.000."
+        ),
+        "threshold_rouge": 0.35,
+        "threshold_judge": 7,
+    },
+    # ... mais casos
+]
+\end{lstlisting}
+
+\subsection{Passo 2 --- Criar e salvar o dataset}
+
+\begin{lstlisting}[language=bash,
+  caption={Cria\c{c}\~ao do golden dataset com baseline salvo.},
+  label={lst:golden_criar}]
+python golden_dataset.py --modo criar --dataset golden_dataset.jsonl
+python golden_dataset.py --modo rodar --dataset golden_dataset.jsonl --saida golden_baseline.json
+
+# Saida esperada:
+# Golden dataset criado com 4 casos.
+# Resultados salvos em golden_baseline.json
+\end{lstlisting}
+
+\subsection{Passo 3 --- Executar regress\~ao}
+
+\begin{lstlisting}[language=bash,
+  caption={Execu\c{c}\~ao da su\'ite de regress\~ao.},
+  label={lst:golden_rodar}]
+python golden_dataset.py --modo rodar --dataset golden_dataset.jsonl --saida resultados_golden.json
+
+# Saida esperada:
+# GD-001: rouge_l=0.2857  judge=10  STATUS: FALHOU (rouge abaixo de 0.35)
+# GD-002: rouge_l=0.5000  judge=7   STATUS: PASSOU
+# GD-003: rouge_l=0.4000  judge=7   STATUS: PASSOU
+# GD-004: rouge_l=0.2500  judge=10  STATUS: FALHOU (rouge abaixo de 0.30)
+# Resultado: 2/4 casos aprovados
+\end{lstlisting}
+
+O comportamento acima \'e \textbf{intencional}: GD-001 e GD-004
+t\^em respostas mock propositalmente incompletas, validando que
+o sistema de thresholds funciona corretamente.
+
+\subsection{Passo 4 --- Interpretar o diff}
+
+\begin{lstlisting}[language=bash,
+  caption={Comparar execu\c{c}\~ao atual com baseline.},
+  label={lst:golden_diff}]
+python golden_dataset.py --modo diff --baseline golden_baseline.json --atual resultados_golden.json
+
+# Saida esperada quando nenhuma mudanca ocorreu:
+# "regressoes": []
+# "melhorias": []
+# "estavel": ["GD-001", "GD-002", "GD-003", "GD-004"]
+\end{lstlisting}
+
+\subsection{Passo 5 --- Integra\c{c}\~ao com CI/CD}
+
+A su\'ite de regress\~ao deve ser executada automaticamente
+em qualquer pull request que modifique prompts, modelos ou
+pipeline RAG:
+
+\begin{lstlisting}[language=bash,
+  caption={Exemplo de gate de qualidade em GitHub Actions.},
+  label={lst:golden_cicd}]
+- name: Regressao de qualidade
+  run: |
+    python golden_dataset.py --modo rodar
+    if python golden_dataset.py --modo diff | grep -q "Regressoes: [^0]"; then
+      echo "FALHA: regressao detectada -- bloquear release"
+      exit 1
+    fi
+\end{lstlisting}
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+% ---------------------------------------------------------------
+
+\begin{enumerate}[leftmargin=*]
+  \item Um caso que passou no baseline e falhou agora \'e
+        classificado como o qu\^e?\\
+        \textbf{Gabarito:} \textbf{regress\~ao} --- deve bloquear
+        o release at\'e a causa ser identificada.
+
+  \item Por que cada caso pode ter um threshold ROUGE-L
+        diferente?\\
+        \textbf{Gabarito:} porque o n\'ivel de fidelidade lexical
+        esperado varia com o tipo de pergunta --- perguntas factuais
+        (taxas, prazos) t\^em threshold mais alto; perguntas
+        explicativas aceitam mais parafrasea\c{c}\~ao.
+
+  \item \'E seguro mover um caso do golden dataset para um
+        threshold mais baixo ap\'os uma regress\~ao?\\
+        \textbf{Gabarito: N\~ao} --- isso mascararia a degrada\c{c}\~ao;
+        o correto \'e investigar e corrigir a causa.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item O golden dataset \'e a mem\'oria coletiva de qualidade:
+        expectativas negociadas entre engenharia e neg\'ocio.
+  \item Cada caso tem thresholds individuais para ROUGE-L e
+        LLM Judge.
+  \item O diff classifica mudan\c{c}as em regress\~oes, melhorias
+        e casos est\'aveis.
+  \item Regress\~oes devem bloquear o release automaticamente no
+        CI/CD.
+  \item A estrat\'egia h\'ibrida (sint\'etico + revis\~ao humana)
+        equilibra velocidade e fidelidade de dom\'inio.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-14-01:} modo \texttt{criar} deve gerar
+        \texttt{golden\_baseline.json} com 4 chaves.
+  \item \textbf{TC-14-02:} modo \texttt{rodar} deve retornar
+        2/4 aprovados com as respostas mock padr\~ao.
+  \item \textbf{TC-14-03:} modo \texttt{diff} com baseline
+        id\^entico deve reportar 0 regress\~oes.
+  \item \textbf{TC-14-04:} caso com resposta vazia deve ser
+        reprovado independentemente do threshold.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-14-01 a TC-14-03 passam com \texttt{golden\_dataset.py}.
+  \item Nenhuma exce\c{c}\~ao nos tr\^es modos sem credenciais AWS.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v14.1:} ampliar para 50 casos por segmento
+        (PF/PJ/FP) usando gera\c{c}\~ao sint\'etica com Claude.
+  \item \textbf{v14.2:} dashboard de evolu\c{c}\~ao hist\'orica
+        de scores ao longo de deploys.
+  \item \textbf{Lacuna:} protocolo de expira\c{c}\~ao de casos ---
+        como desativar casos que n\~ao refletem mais pol\'iticas
+        de produto atuais.
+\end{itemize}
+
+\section{Objetivos de aprendizagem}
+\begin{itemize}[leftmargin=*]
+  \item Entender os conceitos nucleares do tema.
+  \item Aplicar o tema em uma implementacao concreta do projeto.
+  \item Definir evidencias objetivas de qualidade e funcionamento.
+\end{itemize}
+
+\section{Implementacao orientada por passos}
+\begin{enumerate}[leftmargin=*]
+  \item Preparacao do ambiente e insumos.
+  \item Implementacao guiada do fluxo principal.
+  \item Validacao dos resultados esperados.
+  \item Registro de decisoes tecnicas e trade-offs.
+\end{enumerate}
+
+\section{Plano de testes do capitulo}
+\subsection{Teste funcional}
+\begin{itemize}[leftmargin=*]
+  \item Definir casos de entrada e saida esperada.
+  \item Verificar comportamento nominal e casos de erro.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+\begin{itemize}[leftmargin=*]
+  \item Medir latencia ponta a ponta.
+  \item Medir uso estimado de tokens por execucao.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+\begin{itemize}[leftmargin=*]
+  \item Medir aderencia ao contexto recuperado.
+  \item Medir consistencia da resposta com o objetivo do usuario.
+\end{itemize}
+
+\section{Criterios de aceite}
+\begin{itemize}[leftmargin=*]
+  \item Implementacao executa sem erros bloqueantes.
+  \item Testes definidos no capitulo atingem resultado esperado.
+  \item Evidencias de execucao sao anexadas pelos autores.
+\end{itemize}
+
+\section{Espaco para expansao iterativa}
+\begin{itemize}[leftmargin=*]
+  \item Notas de versao do capitulo.
+  \item Melhorias planejadas.
+  \item Lacunas para investigacao futura.
+\end{itemize}

@@ -158,3 +158,10 @@ module "api_gateway" {
   ingester_function_name   = module.lambda.ingester_function_name
   depends_on               = [module.lambda]
 }
+
+module "cloudfront_frontend" {
+  source       = "./modules/cloudfront_frontend"
+  project_name = var.project_name
+  environment  = var.environment
+  api_endpoint = module.api_gateway.api_endpoint
+}

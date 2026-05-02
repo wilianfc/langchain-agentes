@@ -57,11 +57,11 @@ resource "aws_security_group" "bedrock_endpoint" {
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    from_port                = 443
-    to_port                  = 443
-    protocol                 = "tcp"
-    security_groups          = [aws_security_group.lambda.id]
-    description              = "HTTPS do Lambda"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda.id]
+    description     = "HTTPS do Lambda"
   }
 
   egress {

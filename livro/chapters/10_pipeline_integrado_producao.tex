@@ -1,0 +1,301 @@
+\chapter{Pipeline Integrado em Producao}
+\label{chap:pipeline_integrado_producao}
+
+% ---------------------------------------------------------------
+\section{Escopo do capitulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} ponto de converg\^encia.
+Os nove cap\'itulos anteriores constru\'iram pe\c{c}as separadas
+--- o modelo, o agente, o RAG, o pipeline, os twins, o grafo.
+Aqui elas se encaixam pela primeira vez em um sistema coeso.
+Daqui em diante, a pergunta muda: n\~ao mais ``como construir?''
+mas ``como garantir que funciona em produ\c{c}\~ao?''. O loop
+externo come\c{c}a no pr\'oximo cap\'itulo.
+\end{quote}
+
+Este capitulo e o ponto de convergencia dos tres capitulos anteriores:
+pipeline assincrono (Cap.~\ref{chap:pipeline_assincrono_aws}),
+segmentacao e twins (Cap.~\ref{chap:segmentacao_personas_twins}) e
+GraphRAG com Neptune (Cap.~\ref{chap:graphrag_neptune}).
+Aqui os componentes sao observados juntos, como um sistema coeso em
+producao, revelando decisoes de arquitetura que so fazem sentido quando
+as tres camadas operam simultaneamente.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este capitulo, o leitor sera capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Distinguir as fases \textit{offline} (SageMaker Processing Job)
+        e \textit{online} (Lambda por requisicao) do pipeline;
+  \item Justificar por que a indexacao de twins usa indice unico com
+        \texttt{pre\_filter} em vez de um indice por cliente;
+  \item Calcular e interpretar o indice de confiabilidade a partir das
+        fontes RAG ativas;
+  \item Usar o \texttt{demo\_api.ipynb} como ferramenta de validacao
+        ponta a ponta dos tres modos.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos teoricos}
+% ---------------------------------------------------------------
+
+\subsection{Duas fases, um sistema}
+
+O pipeline e dividido em duas fases com responsabilidades distintas:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Fase offline} (SageMaker Processing Job): execucao
+        periodica ou por evento. Carrega dados brutos, treina
+        K-Means\index{K-Means} com StandardScaler\index{StandardScaler},
+        indexa os clusters no OpenSearch\index{OpenSearch}, indexa os
+        digital twins\index{digital twin} e persiste o modelo em S3.
+  \item \textbf{Fase online} (Lambda\index{Lambda (AWS)} por requisicao):
+        no cold start, carrega o modelo do S3. Por requisicao, classifica
+        o cliente, executa o agente LangGraph\index{LangGraph} com RAG
+        hibrido e retorna a resposta com indice de confiabilidade.
+\end{itemize}
+
+\begin{lstlisting}[language=bash,
+  caption={Visao esquematica das duas fases do pipeline.},
+  label={lst:duas_fases}]
+# FASE OFFLINE (SageMaker Job)
+Dados brutos (S3)
+  -> K-Means + StandardScaler
+  -> Indexar OpenSearch: clientes-segmento-{0..3}
+  -> Indexar OpenSearch: clientes-digital-twins
+  -> Salvar modelo: s3://bucket/models/clustering.pkl
+
+# FASE ONLINE (Lambda - cold start, uma vez por instancia)
+carregar_pkl_s3("clustering.pkl")
+BedrockEmbeddings(model="amazon.titan-embed-text-v1")
+criar_agente_por_cluster(cluster_id)  # 1 agente ReAct por segmento
+
+# FASE ONLINE (Lambda - por requisicao)
+KMeans.predict(StandardScaler.transform(dados_cliente)) -> cluster_id
+buscar_rag(cluster_id ou cliente_id)  # OpenSearch + Neptune
+LangGraph ReAct -> resposta + indice_confiabilidade
+\end{lstlisting}
+
+\subsection{Estrategia de indexacao: indice unico versus indice por cliente}
+
+O modo \texttt{twin}\index{digital twin} poderia usar um indice OpenSearch
+por cliente --- solucao intuitiva, porem inviavel em producao:
+$N$ clientes gerariam $N$ indices, elevando custo de gerenciamento,
+tempo de cold start e complexidade de re-indexacao.
+
+A estrategia adotada e um indice unico \texttt{clientes-digital-twins}
+com o campo de metadado \texttt{cliente\_id}. Na consulta, aplica-se
+\texttt{pre\_filter} para restringir o escore k-NN ao cliente especifico:
+
+\begin{lstlisting}[language=Python,
+  caption={Retriever com pre\_filter por cliente\_id no indice de twins.},
+  label={lst:prefilter_twin}]
+vs.as_retriever(
+    search_kwargs={
+        "k": 3,
+        "pre_filter": {
+            "term": {"metadata.cliente_id": cliente_id}
+        },
+    }
+)
+\end{lstlisting}
+
+Essa abordagem mantem latencia equivalente a um unico indice e
+permite re-indexacao limpa de clientes especificos sem afetar os demais.
+
+\subsection{Indice de confiabilidade}
+
+O indice de confiabilidade\index{indice de confiabilidade|textbf}
+quantifica o quanto o LLM utilizou o contexto RAG recuperado.
+E calculado em duas dimensoes:
+
+\begin{equation}
+  \text{score} = 0{,}85 \times \text{cobertura\_fontes}
+               + 0{,}15 \times \text{sobreposicao\_lexica}
+  \label{eq:indice_confiabilidade}
+\end{equation}
+
+A \textbf{cobertura de fontes} e a soma dos pesos das camadas RAG ativas,
+conforme a Tabela~\ref{tab:pesos_rag}.
+
+\begin{table}[ht]
+\centering
+\caption{Pesos das fontes RAG no indice de confiabilidade.}
+\label{tab:pesos_rag}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Fonte} & \textbf{Peso} & \textbf{Condicao de ativacao} \\
+\midrule
+BM25 OpenSearch  & 0,40 & Ao menos 1 documento recuperado \\
+Neptune live     & 0,30 & Query OpenCypher retorna resultados \\
+Neptune sync     & 0,15 & Snapshot replicado disponivel \\
+\midrule
+\textbf{Maximo}  & \textbf{0,85} & Todas as fontes ativas \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A \textbf{sobreposicao lexica} mede a fracao de termos-chave do contexto
+recuperado que aparece na resposta final, com contribuicao maxima de 0,15.
+
+A escala de interpretacao do score final e:
+
+\begin{itemize}[leftmargin=*]
+  \item $\geq 0{,}70$ --- \textbf{ALTO}: duas ou mais fontes ativas;
+        LLM utilizou o contexto de forma verificavel.
+  \item $0{,}40$--$0{,}69$ --- \textbf{MEDIO}: uma fonte ativa ou
+        sobreposicao lexica parcial.
+  \item $< 0{,}40$ --- \textbf{BAIXO}: sem contexto recuperado ---
+        resposta baseada em conhecimento parametrico do LLM.
+\end{itemize}
+
+\textbf{Nota sobre o modo persona:} a sobreposicao lexica tende a ser
+menor porque o LLM reescreve o contexto em linguagem coloquial de
+primeira pessoa, mas a cobertura de fontes reflete corretamente que
+ambas as camadas foram consultadas.
+
+% ---------------------------------------------------------------
+\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Executar a fase offline}
+
+\begin{lstlisting}[language=bash,
+  caption={Execucao do pipeline offline para gerar indices e modelo.},
+  label={lst:pipeline_offline}]
+# Em ambiente SageMaker ou local com credenciais AWS configuradas:
+python aws_pipeline_clientes.py --mode pipeline
+
+# Verificar artefato gerado no S3:
+aws s3 ls s3://$S3_BUCKET/models/clustering.pkl
+
+# Verificar indices criados no OpenSearch:
+curl -s "$OS_ENDPOINT/_cat/indices?v&h=index,docs.count" \
+  | grep clientes
+\end{lstlisting}
+
+Resultado esperado: quatro indices \texttt{clientes-segmento-\{0..3\}}
+e um indice \texttt{clientes-digital-twins}, cada um com a contagem de
+documentos correspondente ao numero de clientes indexados.
+
+\subsection{Passo 2 --- Verificar artefatos no S3 e indices no OpenSearch}
+
+Apos a fase offline, os seguintes artefatos devem existir:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{s3://bucket/models/clustering.pkl} --- modelo KMeans +
+        StandardScaler + perfis enriquecidos;
+  \item Cinco indices OpenSearch: quatro de segmento e um de twins.
+\end{itemize}
+
+\subsection{Passo 3 --- Executar os tres modos via notebook}
+
+O laboratorio oficial deste capitulo e o \texttt{demo\_api.ipynb}.
+Execute as celulas na ordem para observar os tres modos em producao.
+Os modos diferem no sistema prompt e na fonte de RAG,
+conforme a Tabela~\ref{tab:modos_agente}.
+
+\begin{table}[ht]
+\centering
+\caption{Comparativo dos tres modos de agente.}
+\label{tab:modos_agente}
+\begin{tabular}{llll}
+\toprule
+\textbf{Modo} & \textbf{Perspectiva} & \textbf{Indice RAG} & \textbf{Requisito} \\
+\midrule
+\texttt{segmento} & 3a pessoa (gerente)    & \texttt{clientes-segmento-\{id\}} & \texttt{dados\_cliente} \\
+\texttt{persona}  & 1a pessoa (arquetipo)  & \texttt{clientes-segmento-\{id\}} & \texttt{cluster\_id} \\
+\texttt{twin}     & 1a pessoa (cliente real) & \texttt{clientes-digital-twins} & \texttt{cliente\_id} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Passo 4 --- Analisar o indice de confiabilidade}
+
+Apos executar os tres modos, a celula de tabela comparativa do notebook
+consolida os scores. Espera-se:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{segmento} e \texttt{twin} com cliente indexado:
+        score ALTO ($\geq 0{,}70$);
+  \item \texttt{persona}: score ALTO em cobertura de fontes,
+        sobreposicao lexica inferior ao modo segmento;
+  \item \texttt{twin} com cliente sem dados no indice:
+        score BAIXO ($< 0{,}40$).
+\end{itemize}
+
+\subsection{Passo 5 --- Simular degradacao por ausencia de indexacao}
+
+A celula ``Demonstracao de degradacao'' do notebook usa o cliente
+hipotetico \texttt{DEMO-X999} (inexistente no indice) para demonstrar
+que o indice de confiabilidade detecta corretamente a ausencia de
+contexto RAG --- o score cai para o nivel BAIXO e a resposta passa a
+depender exclusivamente do conhecimento parametrico do LLM.
+
+\subsection{Passo 6 --- Resultado completo da aula}
+
+Ao final, o aluno deve comprovar:
+
+\begin{itemize}[leftmargin=*]
+  \item Fase offline executada com artefatos persistidos no S3;
+  \item Quatro indices de segmento e um de twins no OpenSearch;
+  \item Tres modos retornando \texttt{COMPLETED} com score de
+        confiabilidade coerente com as fontes ativas;
+  \item Score do twin com cliente indexado superior ao twin sem
+        cliente indexado.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do capitulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} executar fase offline e verificar existencia
+        de \texttt{clustering.pkl} no S3 e cinco indices no OpenSearch.
+  \item \textbf{TC-02:} modo \texttt{segmento} retorna
+        \texttt{COMPLETED} com score $\geq 0{,}70$.
+  \item \textbf{TC-03:} modo \texttt{twin} com cliente indexado retorna
+        score superior ao mesmo modo com cliente nao indexado.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} modo \texttt{persona} mantem voz em primeira
+        pessoa em 100\% das respostas dos quatro clusters.
+  \item \textbf{TQ-02:} modo \texttt{twin} com cliente indexado cita
+        dados numericos do perfil individual em pelo menos 80\% das
+        respostas.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Criterios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-03 aprovados.
+  \item TQ-01 e TQ-02 dentro dos limites estabelecidos.
+  \item Score de confiabilidade calculado e exibido corretamente
+        para os tres modos no notebook.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v10.1} --- Adicionar cache de contexto RAG no DynamoDB
+        para reduzir latencia em consultas repetidas ao mesmo cliente.
+  \item \textbf{v10.2} --- Implementar re-indexacao incremental de twins
+        sem necessidade de re-executar o pipeline completo.
+  \item \textbf{v10.3} --- Expandir o indice de confiabilidade com
+        metrica de coerencia semantica (cosine similarity) entre
+        contexto recuperado e resposta gerada.
+\end{itemize}

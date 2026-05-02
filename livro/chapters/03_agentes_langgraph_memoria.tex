@@ -2,8 +2,34 @@
 \label{chap:agentes_langgraph_memoria}
 
 % ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
+
+Para aproveitar plenamente este cap\'itulo, o leitor deve ter
+conclu\'ido os cap\'itulos anteriores e estar familiarizado com:
+
+\begin{itemize}[leftmargin=*]
+  \item Conceitos b\'asicos de LLMs e \textit{prompting} estruturado
+        (Cap\'itulo~\ref{chap:fundamentos_llm_ia});
+  \item Configura\c{c}\~ao do ambiente Python com \texttt{langchain-aws}
+        e acesso ao \textit{Amazon Bedrock}
+        (Cap\'itulo~\ref{chap:ambiente_reprodutibilidade});
+  \item No\c{c}\~oes de grafos dirigidos e fun\c{c}\~oes de alta ordem
+        em Python (iteradores, decoradores, \texttt{TypedDict}).
+\end{itemize}
+
+% ---------------------------------------------------------------
 \section{Escopo do cap\'itulo}
 % ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop interno, primeira virada.
+Nos cap\'itulos 1 e 2 aprendemos a conversar com um LLM. Agora o
+sistema passa a \emph{agir}: ele pode consultar ferramentas, manter
+mem\'oria e tomar decis\~oes em m\'ultiplos turnos. Esta \'e a
+pe\c{c}a que conectar\'a, nos cap\'itulos 7--9, ao pipeline
+ass\'incrono, \`a segmenta\c{c}\~ao e ao GraphRAG.
+\end{quote}
 
 Este cap\'itulo apresenta a constru\c{c}\~ao de agentes de IA\index{agente (IA)|textbf} orientados
 a grafos de estado utilizando a biblioteca \textit{LangGraph}\index{LangGraph|textbf}
@@ -17,7 +43,8 @@ de an\'alise (\textit{thought}\index{thought (ReAct)}), invoca\c{c}\~ao de ferra
 at\'e satisfazer o crit\'erio de parada. A gest\~ao de mem\'oria\index{mem\'oria!agentes} ---
 tanto de curto prazo (hist\'orico de mensagens) quanto de m\'edio prazo
 (vetor sem\^antico\index{vetor sem\^antico} FAISS\index{FAISS|textbf}) --- \'e descrita e implementada ao longo do
-cap\'itulo.
+cap\'itulo. Esta combina\c{c}\~ao corresponde ao padr\~ao de \textit{basic reasoning agent}
+com extens\~ao de mem\'oria no AWS Prescriptive Guidance~\cite{awsagentic2025}.
 
 % ---------------------------------------------------------------
 \section{Objetivos de aprendizagem}
@@ -238,6 +265,196 @@ ferramentas.append(buscar_documentos)
 \end{lstlisting}
 
 % ---------------------------------------------------------------
+\section{Padr\~oes alternativos de agente}
+\label{sec:padroes_agentes}
+% ---------------------------------------------------------------
+
+O padr\~ao ReAct \'e o mais adotado na pr\'atica por sua simplicidade
+e compatibilidade direta com o \textit{LangGraph}, mas n\~ao \'e
+universal. A escolha do padr\~ao deve guiar-se pela natureza da tarefa,
+pelo custo de lat\^encia e pelo grau de previsibilidade do fluxo de
+execu\c{c}\~ao. A Tabela~\ref{tab:padroes_agentes} sintetiza os
+principais padr\~oes e seus crit\'erios de uso.
+
+\begin{table}[htbp]
+\centering
+\caption{Compara\c{c}\~ao dos principais padr\~oes de agente com \textit{LangGraph}.}
+\label{tab:padroes_agentes}
+\begin{tabular}{p{3.2cm} p{5.2cm} p{5.0cm}}
+\toprule
+\textbf{Padr\~ao} & \textbf{Descri\c{c}\~ao} & \textbf{Quando usar} \\
+\midrule
+\textbf{ReAct} & Ciclo \textit{thought $\to$ action $\to$ observation} at\'e crit\'erio de parada. & Tarefas abertas com n\'umero indefinido de etapas. \\
+\addlinespace
+\textbf{Plan-and-Execute} & Fase de planejamento gera um plano de $N$ passos; fase de execu\c{c}\~ao percorre cada passo sequencialmente. & Tarefas longas e determin\'isticas com plano est\'avel. \\
+\addlinespace
+\textbf{Reflexion} & O agente auto-critica sua resposta e refina iterativamente antes de finalizar. & Gera\c{c}\~ao de texto, c\'odigo ou an\'alise que requer autocorre\c{c}\~ao. \\
+\addlinespace
+\textbf{Multi-Agent Supervisor} & Um agente orquestrador delega subproblemas a agentes especialistas; cada especialista opera de forma independente. & Dom\'inios distintos que exigem especialistas separados (ex.: PF, PJ, FP, PJA). \\
+\addlinespace
+\textbf{Tool Calling puro} & Sem ciclo iterativo; o LLM realiza uma \'unica chamada de ferramenta e finaliza. & Tarefas de uma etapa com lat\^encia cr\'itica. \\
+\addlinespace
+\textbf{Structured Output} & Sem ferramentas; o LLM retorna JSON estruturado via \texttt{with\_structured\_output}. & Extra\c{c}\~ao, classifica\c{c}\~ao e transforma\c{c}\~ao de dados. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Plan-and-Execute}
+
+No padr\~ao \textit{Plan-and-Execute}\index{Plan-and-Execute|textbf}, o grafo \'e dividido em dois n\'os
+distintos: \texttt{planejar} e \texttt{executar}. O n\'o de planejamento
+invoca o LLM uma \'unica vez para gerar uma lista ordenada de etapas; o
+n\'o de execu\c{c}\~ao percorre cada etapa sequencialmente, podendo chamar
+ferramentas. Esse padr\~ao reduz o n\'umero de chamadas ao LLM em rela\c{c}\~ao
+ao ReAct quando o plano \'e est\'avel, pois o racioc\'inio de alto n\'ivel
+acontece apenas uma vez:
+
+\begin{lstlisting}[language=Python,
+  caption={Esbo\c{c}o do padr\~ao \textit{Plan-and-Execute} com \textit{LangGraph}.},
+  label={lst:plan_execute}]
+from typing import TypedDict, List
+from langgraph.graph import StateGraph, END
+
+class EstadoPlan(TypedDict):
+    objetivo: str
+    plano: List[str]       # lista de passos gerada pelo planejador
+    passo_atual: int
+    resultados: List[str]
+
+def planejar(state: EstadoPlan) -> dict:
+    """Invoca o LLM para gerar o plano completo."""
+    resposta = llm.invoke(
+        f"Decomponha em passos: {state['objetivo']}"
+    )
+    passos = resposta.content.strip().split("\n")
+    return {"plano": passos, "passo_atual": 0}
+
+def executar(state: EstadoPlan) -> dict:
+    """Executa o passo atual do plano."""
+    passo = state["plano"][state["passo_atual"]]
+    resultado = llm.invoke(f"Execute: {passo}")
+    return {
+        "resultados": state["resultados"] + [resultado.content],
+        "passo_atual": state["passo_atual"] + 1,
+    }
+
+def ha_proximo(state: EstadoPlan) -> str:
+    return "executar" if state["passo_atual"] < len(state["plano"]) else END
+
+grafo_plan = StateGraph(EstadoPlan)
+grafo_plan.add_node("planejar", planejar)
+grafo_plan.add_node("executar", executar)
+grafo_plan.set_entry_point("planejar")
+grafo_plan.add_edge("planejar", "executar")
+grafo_plan.add_conditional_edges("executar", ha_proximo)
+agente_plan = grafo_plan.compile()
+\end{lstlisting}
+
+\subsection{Reflexion}
+
+No padr\~ao \textit{Reflexion}\index{Reflexion|textbf}, ap\'os gerar uma resposta, o agente
+invoca um segundo n\'o de cr\'itica que avalia a qualidade da resposta
+e decide se ela deve ser refinada ou finalizada. O ciclo de reflex\~ao
+tem um limite m\'aximo de itera\c{c}\~oes para evitar loop infinito:
+
+\begin{lstlisting}[language=Python,
+  caption={Esbo\c{c}o do padr\~ao \textit{Reflexion} com \textit{LangGraph}.},
+  label={lst:reflexion}]
+class EstadoReflexion(TypedDict):
+    pergunta: str
+    rascunho: str
+    critica: str
+    iteracao: int
+    MAX_ITER: int
+
+def gerar(state: EstadoReflexion) -> dict:
+    rascunho = llm.invoke(state["pergunta"]).content
+    return {"rascunho": rascunho, "iteracao": state["iteracao"] + 1}
+
+def criticar(state: EstadoReflexion) -> dict:
+    prompt = (
+        f"Avalie a resposta: {state['rascunho']}\n"
+        "Aponte falhas factuais ou de coerencia. "
+        "Responda 'OK' se estiver correta."
+    )
+    critica = llm.invoke(prompt).content
+    return {"critica": critica}
+
+def deve_refinar(state: EstadoReflexion) -> str:
+    if "OK" in state["critica"] or state["iteracao"] >= state["MAX_ITER"]:
+        return END
+    return "gerar"
+
+grafo_ref = StateGraph(EstadoReflexion)
+grafo_ref.add_node("gerar", gerar)
+grafo_ref.add_node("criticar", criticar)
+grafo_ref.set_entry_point("gerar")
+grafo_ref.add_edge("gerar", "criticar")
+grafo_ref.add_conditional_edges("criticar", deve_refinar)
+agente_ref = grafo_ref.compile()
+\end{lstlisting}
+
+\subsection{Multi-Agent Supervisor}
+\label{subsec:multi_agent_supervisor}
+
+No padr\~ao \textit{Multi-Agent Supervisor}\index{Multi-Agent Supervisor|textbf}, um agente orquestrador
+recebe a requisi\c{c}\~ao, decide qual agente especialista deve atend\^e-la
+e consolida as respostas. Cada especialista opera com suas pr\'oprias
+ferramentas e prompt de sistema, sem conhecer os demais. No contexto
+deste projeto, esse padr\~ao mapeia diretamente os quatro segmentos
+banc\'arios do \texttt{diagram\_v7}: PF, PJ, FP e PJA---cada um com seu
+pr\'oprio \textit{Knowledge Base} e crit\'erios de avalia\c{c}\~ao:
+
+\begin{lstlisting}[language=Python,
+  caption={Esbo\c{c}o do padr\~ao \textit{Multi-Agent Supervisor} com \textit{LangGraph}.},
+  label={lst:multi_agent_supervisor}]
+from typing import Literal
+from langgraph.graph import StateGraph, END
+
+Segmento = Literal["PF", "PJ", "FP", "PJA"]
+
+class EstadoSupervisor(TypedDict):
+    pergunta: str
+    segmento: Segmento
+    resposta: str
+
+def supervisor(state: EstadoSupervisor) -> dict:
+    """Classifica a pergunta no segmento correto."""
+    prompt = (
+        f"Classifique em PF, PJ, FP ou PJA: {state['pergunta']}\n"
+        "Responda apenas com o codigo do segmento."
+    )
+    seg = llm.invoke(prompt).content.strip()
+    return {"segmento": seg}
+
+def agente_pf(state: EstadoSupervisor) -> dict:
+    resp = llm_pf.invoke(state["pergunta"])  # LLM com KB PF
+    return {"resposta": resp.content}
+
+def agente_pj(state: EstadoSupervisor) -> dict:
+    resp = llm_pj.invoke(state["pergunta"])  # LLM com KB PJ
+    return {"resposta": resp.content}
+
+def rotear(state: EstadoSupervisor) -> str:
+    return state["segmento"].lower()  # "pf" | "pj" | "fp" | "pja"
+
+grafo_sup = StateGraph(EstadoSupervisor)
+grafo_sup.add_node("supervisor", supervisor)
+grafo_sup.add_node("pf", agente_pf)
+grafo_sup.add_node("pj", agente_pj)
+# ... adicionar fp e pja analogamente
+grafo_sup.set_entry_point("supervisor")
+grafo_sup.add_conditional_edges("supervisor", rotear)
+for seg in ["pf", "pj", "fp", "pja"]:
+    grafo_sup.add_edge(seg, END)
+agente_supervisor = grafo_sup.compile()
+\end{lstlisting}
+
+O padr\~ao \textit{Multi-Agent Supervisor} \'e o caminho natural de
+evolu\c{c}\~ao do projeto para incorporar os LLM Judges por segmento
+previstos no \texttt{diagram\_v7} (ver Cap\'itulo~\ref{chap:llm_as_judge}).
+
+% ---------------------------------------------------------------
 \section{Plano de testes do cap\'itulo}
 % ---------------------------------------------------------------
 
@@ -290,6 +507,147 @@ ferramentas.append(buscar_documentos)
         (evidenciar com \textit{timestamps} no notebook).
   \item TQ-01: pontua\c{c}\~ao m\'edia $\geq 8{,}0/10$ em 10
         perguntas de refer\^encia.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+\label{sec:autoavaliacao_cap03}
+% ---------------------------------------------------------------
+
+Responda \textbf{V} (verdadeiro) ou \textbf{F} (falso) para cada
+afirmativa. O gabarito comentado segue ao final da se\c{c}\~ao.
+
+\begin{enumerate}[leftmargin=*]
+
+  \item No ciclo ReAct, o n\'o \texttt{raciocinar} \'e invocado uma
+        \'unica vez por requisi\c{c}\~ao.
+
+  \item O redutor \texttt{add\_messages} substitui o hist\'orico
+        anterior a cada turno, mantendo apenas a mensagem mais recente.
+
+  \item O \texttt{MemorySaver} persiste o estado do grafo entre
+        requisi\c{c}\~oes distintas que compartilham o mesmo
+        \texttt{thread\_id}.
+
+  \item No padr\~ao \textit{Plan-and-Execute}, o LLM \'e invocado
+        uma vez para planejar e uma vez para cada passo do plano.
+
+  \item Um agente ReAct que n\~ao encontra informa\c{c}\~ao em
+        nenhuma ferramenta deve alucinar uma resposta plaus\'ivel
+        para n\~ao retornar vazio.
+
+  \item O padr\~ao \textit{Multi-Agent Supervisor} \'e adequado
+        quando diferentes dom\'inios exigem especialistas distintos,
+        como os segmentos banc\'arios PF, PJ, FP e PJA.
+
+  \item A aresta condicional \texttt{deve\_continuar} termina o grafo
+        quando a \'ultima mensagem do agente n\~ao cont\'em
+        \textit{tool calls}.
+
+\end{enumerate}
+
+\paragraph{Gabarito comentado.}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{F} --- O n\'o \texttt{raciocinar} \'e invocado a
+        cada itera\c{c}\~ao do ciclo; pode ser chamado diversas vezes
+        at\'e o crit\'erio de parada ser atingido.
+  \item \textbf{F} --- O redutor \texttt{add\_messages}
+        \textit{acumula} mensagens; sem ele, cada invoca\c{c}\~ao
+        sobrescreveria o hist\'orico.
+  \item \textbf{V} --- Esse \'e exatamente o papel do
+        \texttt{MemorySaver}: correlacionar invoca\c{c}\~oes pelo
+        \texttt{thread\_id} e restaurar o estado persistido.
+  \item \textbf{V} --- O planejador roda uma vez (gera o plano
+        completo) e o executor roda uma vez por passo; o n\'umero
+        total de chamadas ao LLM \'e $1 + N_{\text{passos}}$.
+  \item \textbf{F} --- O agente deve declarar que a informa\c{c}\~ao
+        n\~ao est\'a dispon\'ivel (TC-03). Alucinação é um defeito
+        cr\'itico em sistemas banc\'arios.
+  \item \textbf{V} --- O roteamento por segmento \'e a motiva\c{c}\~ao
+        central do padr\~ao supervisor no contexto deste projeto.
+  \item \textbf{V} --- A aus\^encia de \texttt{tool\_calls} na
+        \'ultima mensagem sinaliza que o agente produziu uma resposta
+        final e o grafo deve terminar em \texttt{END}.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Quest\~ao para reflex\~ao}
+\label{sec:reflexao_cap03}
+% ---------------------------------------------------------------
+
+\textit{Considere um sistema banc\'ario em produ\c{c}\~ao que atende
+simultaneamente clientes PF e PJ. O agente ReAct atual usa um
+\'unico \texttt{MemorySaver} em mem\'oria para todos os
+\texttt{thread\_id}s.}
+
+\begin{quote}
+Em que cen\'arios essa arquitetura pode falhar ou gerar riscos de
+privacidade? Como o padr\~ao \textit{Multi-Agent Supervisor} com
+\textit{checkpointers} isolados por segmento endere\c{c}aria esses
+riscos? Quais contrapartidas de lat\^encia e custo operacional essa
+mudan\c{c}a introduziria?
+\end{quote}
+
+\noindent N\~ao existe uma \'unica resposta correta: o objetivo \'e
+confrontar as decis\~oes arquiteturais com os requisitos reais de
+isolamento de dados, conformidade com a LGPD e desempenho em carga.
+
+% ---------------------------------------------------------------
+\section{Resumo}
+\label{sec:resumo_cap03}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{LangGraph} modela agentes como grafos de estado com
+        n\'os (fun\c{c}\~oes Python) e arestas condicionais.
+  \item O \textbf{ciclo ReAct} alterna \textit{thought},
+        \textit{action} e \textit{observation} at\'e uma condi\c{c}\~ao
+        de parada.
+  \item \textbf{\texttt{add\_messages}} acumula o hist\'orico;
+        \textbf{\texttt{MemorySaver}} persiste o estado entre
+        invoca\c{c}\~oes via \texttt{thread\_id}.
+  \item \textbf{Ferramentas} s\~ao fun\c{c}\~oes decoradas com
+        \texttt{@tool}; o \textbf{\texttt{ToolNode}} processa as
+        \textit{tool calls} automaticamente.
+  \item \textbf{Plan-and-Execute} separa planejamento de
+        execu\c{c}\~ao; indicado quando o plano \'e est\'avel e
+        previs\'ivel.
+  \item \textbf{Reflexion} adiciona um ciclo de autocr\'itica com
+        limite de itera\c{c}\~oes; indicado para gera\c{c}\~ao de
+        conte\'udo que exige refinamento.
+  \item \textbf{Multi-Agent Supervisor} roteia requisi\c{c}\~oes
+        para especialistas independentes; padr\~ao de evolu\c{c}\~ao
+        natural deste projeto para os segmentos PF/PJ/FP/PJA.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Para saber mais}
+\label{sec:para_saber_mais_cap03}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{\citeonline{yao2023react}} --- Artigo original do
+        padr\~ao ReAct; apresenta os experimentos de
+        \textit{question-answering} multietapas que motivaram a
+        adoc\c{c}\~ao do padr\~ao.
+  \item \textbf{Documenta\c{c}\~ao oficial do LangGraph}
+        (\url{https://langchain-ai.github.io/langgraph/}) ---
+        Refer\^encia para os conceitos de \texttt{StateGraph},
+        \texttt{ToolNode}, \texttt{MemorySaver} e
+        padr\~oes multi-agente.
+  \item \textbf{\citeonline{shinn2023reflexion}} --- Artigo que
+        formaliza o padr\~ao Reflexion; recomendado antes de
+        implementar agentes de gera\c{c}\~ao de c\'odigo ou
+        an\'alise de documentos.
+  \item \textbf{AWS Bedrock Agents}\footnote{\url{https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html}}
+        --- Alternativa gerenciada para agentes em produ\c{c}\~ao;
+        \'util para comparar com a abordagem LangGraph quando o
+        requisito \'e reduzir opera\c{c}\~ao.
+  \item \textbf{FAISS} \cite{johnson2019billion} --- Refer\^encia
+        para entender os algoritmos de busca por similaridade
+        (\textit{HNSW}, \textit{IVF}) utilizados na mem\'oria
+        vetorial do agente.
 \end{itemize}
 
 % ---------------------------------------------------------------

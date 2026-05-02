@@ -1,0 +1,241 @@
+\chapter{LLM as Judge}
+\label{chap:llm_as_judge}
+
+% ---------------------------------------------------------------
+\section{Pr\'e-requisitos}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item Cap\'itulo~\ref{chap:avaliacao_metricas_mercado} ---
+        ROUGE-L e limita\c{c}\~oes das m\'etricas lexicais;
+  \item Conceito de \textit{prompt engineering} (cap.~1).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{quote}\itshape
+\textbf{Onde estamos na hist\'oria:} loop externo, avalia\c{c}\~ao
+qualitativa. ROUGE-L mede palavras; o LLM Judge mede inten\c{c}\~ao.
+Este cap\'itulo ativa a segunda camada de avalia\c{c}\~ao: um LLM
+(Claude) que avalia a resposta com base em rubricas dom\'inio-espec\'ificas
+financeiras, substituindo avalia\c{c}\~ao humana cara e lenta.
+\end{quote}
+
+O cap\'itulo aborda: (1) justificativa de LLM-as-Judge vs.\@ m\'etricas
+autom\'aticas; (2) rubrica de 4 dimens\~oes para o dom\'inio banc\'ario;
+(3) implementa\c{c}\~ao do script \texttt{llm\_judge.py}; (4) calibra\c{c}\~ao
+vs.\@ avalia\c{c}\~ao humana. Na taxonomia da AWS, essa estrat\'egia corresponde
+ao padr\~ao \textit{evaluator reflect-refine loop}, com gera\c{c}\~ao e avalia\c{c}\~ao
+desacopladas para refor\c{c}ar qualidade e alinhamento~\cite{awsagentic2025}.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Justificar por que LLM-as-Judge supera m\'etricas lexicais
+        em dom\'inios especializados;
+  \item Projetar uma rubrica de avalia\c{c}\~ao com dimens\~oes e
+        pesos por segmento;
+  \item Executar o script \texttt{llm\_judge.py} em modo mock
+        (offline) e em modo Bedrock (online);
+  \item Identificar riscos de influ\^encia do avaliador e como
+        miti\-g\'a-los.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Por que LLM-as-Judge?}
+
+M\'etricas lexicais (ROUGE-L) e sem\^anticas (BERTScore) medem
+semelhan\c{c}a com uma refer\^encia. Mas no dom\'inio financeiro, a
+qualidade de uma resposta depende de crit\'erios que n\~ao existem
+em refer\^encias textuais:
+
+\begin{itemize}[leftmargin=*]
+  \item Uma resposta sobre CDB que omite o prazo de carenc\^ia pode
+        ter ROUGE-L alto mas ser financeiramente perigosa;
+  \item Uma resposta correta sobre limite de cr\'edito PJ que menciona
+        dados de perfil n\~ao solicitado viola LGPD.
+\end{itemize}
+
+LLM-as-Judge resolve isso com rubricas em linguagem natural que
+capturam obriga\c{c}\~oes regulat\'orias e expectativas de neg\'ocio
+que nenhuma m\'etrica autom\'atica consegue codificar de forma
+exaustiva~\cite{llm_judge2023}.
+
+\subsection{Rubrica de 4 dimens\~oes}
+
+A rubrica do projeto avalia cada resposta em 4 dimens\~oes
+(Tabela~\ref{tab:rubrica_judge}):
+
+\begin{table}[htbp]
+\centering
+\caption{Rubrica do LLM Judge para o dom\'inio banc\'ario.}
+\label{tab:rubrica_judge}
+\begin{tabular}{llrr}
+\toprule
+\textbf{Dimens\~ao} & \textbf{Crit\'erio} & \textbf{M\'ax} & \textbf{Aprovado} \\
+\midrule
+fidelidade\_rag     & resposta coerente com contexto RAG    & 3 & $\geq 2$ \\
+adequacao\_perfil   & tom e conte\'udo para PF/PJ/FP        & 3 & $\geq 2$ \\
+completude          & responde completamente \`a pergunta   & 2 & $= 2$    \\
+conformidade\_lgpd  & n\~ao expe dados n\~ao solicitados    & 2 & $= 2$    \\
+\midrule
+\textbf{Total}      & aprovado se total $\geq 7$            & \textbf{10} & \textbf{$\geq 7$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Modo mock vs.\@ Bedrock}
+
+O script suporta dois modos:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{mock:} respostas pr\'e-configuradas por segmento
+        (PF: 10/10, PJ: 7/10, FP: 7/10) --- reproduz\'ivel sem
+        credenciais, ideal para CI/CD;
+  \item \textbf{bedrock:} envia o prompt ao Claude e faz
+        \textit{parsing} do JSON retornado --- exige credenciais AWS.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Estrutura da rubrica como prompt}
+
+\begin{lstlisting}[language=Python,
+  caption={Prompt de avalia\c{c}\~ao do LLM Judge.},
+  label={lst:judge_prompt}]
+PROMPT_JUDGE = """Voce e um avaliador especializado em servicos bancarios.
+
+Avalie a resposta abaixo em 4 dimensoes e retorne JSON.
+
+Pergunta: {pergunta}
+Segmento: {segmento}   (PF = Pessoa Fisica, PJ = Juridica, FP = Private)
+Contexto RAG fornecido ao agente:
+{contexto}
+
+Resposta gerada:
+{resposta}
+
+Retorne APENAS JSON valido:
+{{
+  "fidelidade_rag":    <0-3>,
+  "adequacao_perfil":  <0-3>,
+  "completude":        <0-2>,
+  "conformidade_lgpd": <0-2>,
+  "justificativa":     "<texto curto>"
+}}"""
+\end{lstlisting}
+
+\subsection{Passo 2 --- Executar em modo mock}
+
+\begin{lstlisting}[language=bash,
+  caption={Execu\c{c}\~ao do LLM Judge em modo mock.},
+  label={lst:judge_mock}]
+python llm_judge.py --modo mock
+
+# Saida esperada:
+# [PF] Score: 10/10 - APROVADO
+#   fidelidade_rag: 3  adequacao_perfil: 3
+#   completude: 2  conformidade_lgpd: 2
+# [PJ] Score:  7/10 - APROVADO
+# [FP] Score:  7/10 - APROVADO
+\end{lstlisting}
+
+\subsection{Passo 3 --- Interpreta\c{c}\~ao e calibra\c{c}\~ao}
+
+A calibra\c{c}\~ao do juiz LLM \'e o processo de comparar seus
+scores com avalia\c{c}\~oes humanas em uma amostra de controle.
+O coeficiente de Cohen's Kappa \'e a m\'etrica padr\~ao:
+
+$$\kappa = \frac{P_o - P_e}{1 - P_e}$$
+
+onde $P_o$ \'e a concord\^ancia observada e $P_e$ a concord\^ancia
+esperada ao acaso. Para uso em produ\c{c}\~ao, recomenda-se
+$\kappa \geq 0{,}60$ (concord\^ancia substancial).
+
+% ---------------------------------------------------------------
+\section{Autoavalia\c{c}\~ao}
+% ---------------------------------------------------------------
+
+\begin{enumerate}[leftmargin=*]
+  \item Uma resposta com score 6/10 deve ser aprovada?\\
+        \textbf{Gabarito: N\~ao} --- o threshold \'e 7/10; 6/10
+        indica que pelo menos uma dimens\~ao est\'a abaixo do
+        esperado.
+
+  \item Por que o modo mock \'e prefer\'ivel ao modo Bedrock em CI/CD?\\
+        \textbf{Gabarito:} determinismo e custo zero --- o mock
+        sempre retorna o mesmo resultado, tornando os testes
+        reproduz\'iveis sem consumir tokens.
+
+  \item Qual dimens\~ao protege contra viola\c{c}\~ao de LGPD?\\
+        \textbf{Gabarito:} \texttt{conformidade\_lgpd}
+        (0--2) --- pontua com 0 se a resposta expoe dados n\~ao
+        solicitados pelo usu\'ario.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Resumo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item LLM-as-Judge captura crit\'erios regulat\'orios e de
+        neg\'ocio inexprim\'iveis em m\'etricas lexicais.
+  \item A rubrica de 4 dimens\~oes equilibra qualidade t\'ecnica
+        (fidelidade RAG) e conformidade (LGPD).
+  \item O modo mock garante reprodutibilidade em CI/CD sem custo
+        de API.
+  \item Calibra\c{c}\~ao com Cohen's Kappa valida a concord\^ancia
+        do juiz LLM com avaliadores humanos.
+  \item Respostas com score $< 7$ devem ser analisadas
+        manualmente e usadas para melhorar os prompts do agente.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-13-01:} modo mock segmento PF deve retornar
+        score 10 e status \texttt{APROVADO}.
+  \item \textbf{TC-13-02:} modo mock segmento PJ deve retornar
+        score 7 e status \texttt{APROVADO}.
+  \item \textbf{TC-13-03:} resposta vazia deve retornar
+        \texttt{conformidade\_lgpd} $= 2$ e
+        \texttt{completude} $= 0$, score $\leq 5$.
+  \item \textbf{TP-13-01:} 50 avalia\c{c}\~oes em modo mock
+        completam em menos de 1\,s.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-13-01 e TC-13-02 passam com \texttt{llm\_judge.py}.
+  \item Nenhuma exce\c{c}\~ao em modo mock sem credenciais AWS.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v13.1:} adicionar dimens\~ao
+        \texttt{clareza\_linguagem} (0--2) para avaliar
+        legibilidade para clientes n\~ao-especialistas.
+  \item \textbf{v13.2:} integra\c{c}\~ao com Langfuse para
+        armazenar scores do judge ao lado dos traces OTel.
+  \item \textbf{Lacuna:} calibra\c{c}\~ao formal com amostra
+        humana de 100 casos por segmento.
+\end{itemize}
