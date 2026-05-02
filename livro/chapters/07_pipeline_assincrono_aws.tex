@@ -1,0 +1,209 @@
+\chapter{Pipeline Assincrono em AWS}
+\label{chap:pipeline_assincrono_aws}
+
+% ---------------------------------------------------------------
+\section{Escopo do capitulo}
+% ---------------------------------------------------------------
+
+Este capitulo descreve, como laboratorio completo, a arquitetura
+assincrona\index{arquitetura assincrona|textbf} usada para superar o limite de
+timeout do API Gateway\index{API Gateway|textbf} e processar consultas RAG com
+LLM em tempo potencialmente superior a 29 segundos. O fluxo adotado e:
+\texttt{API Gateway $\to$ Lambda Controller $\to$ SQS $\to$ Lambda Worker $\to$ DynamoDB $\to$ Lambda Status}.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este capitulo, o leitor sera capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Explicar por que o processamento sincrono falha para pipelines longos;
+  \item Implementar o padrao de enfileiramento com
+        SQS\index{SQS|textbf} e persistencia de status em
+        DynamoDB\index{DynamoDB|textbf};
+  \item Construir endpoints \texttt{/query} e \texttt{/status/\{request\_id\}} com
+        contrato consistente;
+  \item Validar escalabilidade horizontal do worker e observabilidade de estados.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos teoricos}
+% ---------------------------------------------------------------
+
+\subsection{Padrao fire-and-poll}
+
+A estrategia adotada e \textit{fire-and-poll}\index{fire-and-poll|textbf}:
+o cliente envia a requisicao, recebe um \texttt{request\_id} imediatamente e
+consulta o estado periodicamente ate a conclusao. Essa abordagem desacopla o
+tempo de resposta da API do tempo de computacao do pipeline.
+
+\subsection{Estados de processamento}
+
+O registro no DynamoDB utiliza estados tipicos:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{PENDING}: requisicao recebida e enfileirada;
+  \item \texttt{PROCESSING}: worker em execucao;
+  \item \texttt{COMPLETED}: resposta pronta;
+  \item \texttt{FAILED}: erro irrecuperavel com mensagem para auditoria.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Submeter consulta e enfileirar}
+
+O endpoint \texttt{POST /query} recebe payload e delega o trabalho ao SQS,
+retornando \texttt{202 Accepted} com identificador unico:
+
+\begin{lstlisting}[language=Python,
+  caption={Fluxo simplificado do controller: enfileirar e responder rapido.},
+  label={lst:controller_simplificado}]
+request_id = str(uuid.uuid4())
+put_item_dynamodb(request_id, status="PENDING", payload=body)
+enviar_mensagem_sqs(request_id=request_id, payload=body)
+
+return {
+    "statusCode": 202,
+    "body": json.dumps({"request_id": request_id, "status": "PENDING"})
+}
+\end{lstlisting}
+
+\subsection{Passo 2 --- Processar no worker}
+
+O worker consome mensagens da fila, executa o pipeline e grava o resultado:
+
+\begin{lstlisting}[language=Python,
+  caption={Fluxo simplificado do worker com update de status.},
+  label={lst:worker_simplificado}]
+for msg in mensagens_sqs:
+    request_id = msg["request_id"]
+    atualizar_status(request_id, "PROCESSING")
+    try:
+        resposta = executar_pipeline_rag(msg["payload"])
+        salvar_resultado(request_id, status="COMPLETED", result=resposta)
+    except Exception as exc:
+        salvar_resultado(request_id, status="FAILED", error=str(exc))
+\end{lstlisting}
+
+\subsection{Passo 3 --- Consultar status}
+
+O endpoint \texttt{GET /status/\{request\_id\}} consulta DynamoDB e retorna o
+estado corrente para a interface web ou cliente programatico.
+
+\begin{lstlisting}[language=bash,
+  caption={Consulta de status no laboratorio.},
+  label={lst:status_call}]
+curl "$API_URL/status/$REQUEST_ID"
+\end{lstlisting}
+
+\subsection{Passo 4 --- Teste ponta a ponta de laboratorio}
+
+Sequencia recomendada da aula:
+
+\begin{enumerate}[leftmargin=*]
+  \item Enviar \texttt{POST /query} com payload valido;
+  \item Armazenar \texttt{request\_id};
+  \item Executar polling a cada 2 s;
+  \item Registrar transicao de estados ate \texttt{COMPLETED}.
+\end{enumerate}
+
+\begin{lstlisting}[language=bash,
+  caption={Script minimo de polling com shell.},
+  label={lst:polling_shell}]
+REQUEST_ID="..."
+while true; do
+  RESP=$(curl -s "$API_URL/status/$REQUEST_ID")
+  echo "$RESP"
+  echo "$RESP" | findstr COMPLETED >nul && break
+  echo "$RESP" | findstr FAILED >nul && break
+  timeout /t 2 >nul
+done
+\end{lstlisting}
+
+\subsection{Passo 5 --- Resultado completo da aula}
+
+Ao final, o aluno deve observar:
+
+\begin{itemize}[leftmargin=*]
+  \item aceitacao imediata da requisicao no controller;
+  \item processamento desacoplado no worker;
+  \item resultado final consultavel por \texttt{request\_id};
+  \item ausencia de timeout no cliente para cargas demoradas.
+\end{itemize}
+
+\subsection{Passo 6 --- Evidencia operacional via frontend CloudFront}
+
+Em validacao de producao assistida por frontend web (CloudFront), observou-se
+o comportamento esperado do padrao \textit{fire-and-poll}. Para duas
+requisicoes reais (modos \texttt{persona} e \texttt{twin}), o fluxo evoluiu de
+\texttt{PENDING} para \texttt{PROCESSING} e finalizou em \texttt{COMPLETED},
+sem expiracao no cliente.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Persona:} \texttt{request\_id}: \nolinkurl{ddbc5210-63fc-47bc-a274-283e60be84bc}. \par
+        Estado final \texttt{COMPLETED};
+  \item \textbf{Twin:} \texttt{request\_id}: \nolinkurl{e5e348e7-d266-4ae9-9f26-eb0e659a56a7}. \par
+        Estado final \texttt{COMPLETED}.
+\end{itemize}
+
+Essa evidencia reforca que a arquitetura assincrona permanece estavel quando
+acessada por uma interface de navegador, preservando o mesmo contrato de API
+utilizado por scripts de laboratorio.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do capitulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} \texttt{POST /query} retorna \texttt{202} com
+        \texttt{request\_id} valido.
+  \item \textbf{TC-02:} status evolui de \texttt{PENDING} para
+        \texttt{PROCESSING} e depois \texttt{COMPLETED}.
+  \item \textbf{TC-03:} para payload invalido, status final deve ser
+        \texttt{FAILED} com mensagem de erro rastreavel.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} tempo de resposta do controller $\leq 1$\,s
+        para 100 requisicoes seriadas.
+  \item \textbf{TP-02:} throughput do worker com lote de 500 mensagens
+        sem perda de consistencia em DynamoDB.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} comparar 20 respostas assincronas com baseline
+        sincrono local e verificar equivalencia semantica.
+  \item \textbf{TQ-02:} validar que o modo de polling nao altera o
+        conteudo final da resposta.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Criterios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-03 aprovados.
+  \item TP-01 e TP-02 dentro dos limites acordados para \texttt{dev}.
+  \item TQ-01 com equivalencia media $\geq 95\%$ frente ao baseline.
+  \item Validacao real de polling no frontend com status final
+        \texttt{COMPLETED} em modos distintos de consulta.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v7.1} --- Trocar polling por WebSocket para notificacao ativa.
+  \item \textbf{v7.2} --- Adicionar \textit{dead-letter queue}\index{dead-letter queue} e retentativas.
+  \item \textbf{Lacuna} --- Modelar SLA distinto por tipo de consulta e modo de agente.
+\end{itemize}

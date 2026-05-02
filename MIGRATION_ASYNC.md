@@ -323,7 +323,54 @@ GET /status/req_abc123
 
 ---
 
-## 📚 Referências
+## �️ Frontend CloudFront — Exibição do Resultado
+
+### Contrato de resposta da API (GET /status/{request_id})
+
+Quando o status é `COMPLETED`, a API retorna:
+
+```json
+{
+  "request_id": "...",
+  "status": "COMPLETED",
+  "result": {
+    "cliente_id": "C12345",
+    "cluster_id": 2,
+    "segmento": "Massa Estável",
+    "resposta": "<texto legível do agente>",
+    "confiabilidade": 0.87
+  },
+  "completed_at": "..."
+}
+```
+
+O campo que contém o texto da resposta do agente é **`result.resposta`** (não `result` diretamente).
+
+### Tratamento correto no `app.js`
+
+```js
+// CORRETO — lê data.result (objeto) e extrai .resposta
+let result = data.result;
+if (typeof result === 'string') {
+  try { result = JSON.parse(result); } catch (_) {}
+}
+if (result && typeof result === 'object' && result.resposta) {
+  queryResult.textContent = result.resposta;          // texto limpo
+  queryStatus.textContent = JSON.stringify({           // metadados no painel de status
+    status: data.status,
+    completed_at: data.completed_at,
+    metadata: (({ resposta, ...rest }) => rest)(result),
+  }, null, 2);
+} else {
+  queryResult.textContent = JSON.stringify(result, null, 2);
+}
+```
+
+> **Correção aplicada em 02/05/2026:** versão anterior usava `data.result` diretamente no `textContent`, exibindo `[object Object]` ou `undefined`. Corrigido para extrair `result.resposta` e tratar a serialização JSON quando necessário.
+
+---
+
+## �📚 Referências
 
 - [AWS Lambda Async Patterns](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async.html)
 - [DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)

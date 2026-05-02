@@ -1,0 +1,359 @@
+\chapter{Qualidade, Seguran\c{c}a e Governan\c{c}a nas Esteiras de Produto}
+\label{chap:qualidade_seguranca_esteiras}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+Este cap\'itulo detalha os requisitos de qualidade m\'inima, os padr\~oes de
+seguran\c{c}a\index{segurança (esteira)|textbf} e as pr\'aticas de governan\c{c}a
+obrigat\'orios em todas as esteiras de produto da plataforma banc\'aria. Enquanto
+o Cap\'itulo~\ref{chap:cicd_multiambiente_bancario} aborda a estrutura de
+ambientes e o fluxo de promo\c{c}\~ao, este cap\'itulo concentra-se nos
+\textit{quality gates}\index{quality gate|textbf} --- pontos de controle que
+um artefato deve transpor antes de avan\c{c}ar ao pr\'oximo est\'agio ---
+e nos controles de conformidade exigidos pela regula\c{c}\~ao banc\'aria
+brasileira, em especial a Resolu\c{c}\~ao CMN n\textordmasculine~4.893/2021
+do Banco Central do Brasil\index{BACEN|textbf}\index{Banco Central do Brasil|see{BACEN}}.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Definir e configurar \textit{quality gates} para testes unit\'arios,
+        de integra\c{c}\~ao e de seguran\c{c}a est\'atica em pipelines AWS;
+  \item Aplicar an\'alise est\'atica de seguran\c{c}a com \texttt{bandit}
+        (Python) e \texttt{checkov} / \texttt{tfsec} (Terraform);
+  \item Implementar o princ\'ipio do menor privil\'egio\index{menor privilégio|textbf}
+        em roles IAM criadas via Terraform;
+  \item Configurar auditoria centralizada com CloudTrail\index{CloudTrail|textbf}
+        e alertas de desvio de conformidade.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Quality gates nas esteiras banc\'arias}
+
+Um \textit{quality gate} \'e uma condic\c{c}\~ao bin\'aria --- aprovado/reprovado
+--- que bloqueia o avan\c{c}o do pipeline caso um limiar m\'inimo n\~ao
+seja atingido. A Tabela~\ref{tab:quality_gates} apresenta os gates
+obrigat\'orios, os limiares adotados e as ferramentas respons\'aveis
+por cada verifica\c{c}\~ao.
+
+\begin{table}[ht]
+  \centering
+  \caption{Quality gates obrigat\'orios por est\'agio de pipeline banc\'ario.}
+  \label{tab:quality_gates}
+  \begin{tabular}{llll}
+    \toprule
+    Est\'agio & Gate & Limiar & Ferramenta \\
+    \midrule
+    PR / CI   & Cobertura de testes unit\'arios & $\geq 70\%$  & \texttt{pytest --cov} \\
+    PR / CI   & Lint e formata\c{c}\~ao         & zero erros   & \texttt{flake8}, \texttt{black} \\
+    PR / CI   & Seguran\c{c}a est\'atica Python  & zero HIGH    & \texttt{bandit} \\
+    PR / CI   & Seguran\c{c}a Terraform          & zero CRITICAL & \texttt{checkov}, \texttt{tfsec} \\
+    Homol     & Testes de integra\c{c}\~ao       & $100\%$ pass & \texttt{pytest} \\
+    Homol     & Drift de infraestrutura          & zero desvios & \texttt{terraform plan} \\
+    Prod      & Aprova\c{c}\~ao dupla            & 2 revisores  & GitHub Environments \\
+    Prod      & Janela de manuten\c{c}\~ao        & registrada   & Change Management \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Segurança estática: Python e Terraform}
+
+A an\'alise est\'atica de seguran\c{c}a\index{análise estática de segurança}
+\'e executada antes de qualquer deploy, detectando vulnerabilidades conhecidas
+no c\'odigo-fonte e nas configura\c{c}\~oes de infraestrutura:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{\texttt{bandit}\index{bandit (segurança)}}:
+        verifica o c\'odigo Python em busca de padr\~oes do OWASP Top~10\index{OWASP Top 10},
+        como uso de \texttt{eval()}, \texttt{pickle}, sen\~ao constantes
+        em hashes criptogr\'aficos e injection vulnerabilities.
+  \item \textbf{\texttt{checkov}\index{checkov}}:
+        analisa recursos Terraform contra um banco de mais de 1.000
+        pol\'iticas de seguran\c{c}a (CIS Benchmarks, AWS Foundational
+        Security Best Practices).
+  \item \textbf{\texttt{tfsec}\index{tfsec}}:
+        complementa o \texttt{checkov} com verifica\c{c}\~oes espec\'ificas
+        de misconfigura\c{c}\~oes AWS, como buckets S3 p\'ublicos,
+        security groups com \texttt{0.0.0.0/0} e criptografia ausente.
+\end{itemize}
+
+\subsection{Princ\'ipio do menor privil\'egio em IAM}
+
+Roles IAM\index{IAM!menor privilégio} para fun\c{c}\~oes Lambda e pipelines
+de CI/CD devem seguir o padr\~ao:
+
+\begin{enumerate}[leftmargin=*]
+  \item Nenhum wildcard (\texttt{*}) em \texttt{Action} ou \texttt{Resource}.
+  \item \texttt{Condition} com \texttt{aws:SourceAccount} restringindo
+        o acesso \`a conta AWS do ambiente.
+  \item Pol\'itica de nega\c{c}\~ao expl\'icita para a\c{c}\~oes
+        destrutivas (\texttt{DeleteTable}, \texttt{DeleteBucket}) em
+        ambientes \texttt{homol} e \texttt{prod}.
+  \item Revis\~ao semestral autom\'atica via AWS Access Analyzer\index{AWS Access Analyzer}.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Configurar quality gate de testes e lint}
+
+\begin{lstlisting}[language=bash,
+  caption={Job de quality gate no GitHub Actions com cobertura e lint.},
+  label={lst:quality_gate}]
+# Trecho do job "quality" em .github/workflows/ci.yml
+- name: Testes unitarios com cobertura
+  run: |
+    pytest src/tests/test_unit.py \
+      --cov=src \
+      --cov-report=xml \
+      --cov-fail-under=70 \
+      -v
+
+- name: Upload cobertura (Codecov)
+  uses: codecov/codecov-action@v4
+  with:
+    files: coverage.xml
+    fail_ci_if_error: true
+
+- name: Lint (flake8)
+  run: flake8 src/ --max-line-length=100 --statistics
+
+- name: Formatacao (black)
+  run: black --check --diff src/
+\end{lstlisting}
+
+\subsection{Passo 2 --- Testes de integra\c{c}\~ao contra ambiente \texttt{dev}}
+
+Os testes de integra\c{c}\~ao\index{testes de integração|textbf} s\~ao executados
+no ambiente \texttt{dev} ap\'os o deploy bem-sucedido, utilizando
+dados sint\'eticos que replicam a estrutura de dados de produ\c{c}\~ao
+sem expor informa\c{c}\~oes reais de clientes:
+
+\begin{lstlisting}[language=Python,
+  caption={Teste de integra\c{c}\~ao para endpoint de segmenta\c{c}\~ao.},
+  label={lst:integ_test}]
+import pytest
+import boto3
+import json
+
+API_URL = "https://api-dev.banco.interno/v1/segmentacao"
+
+@pytest.fixture(scope="module")
+def api_token():
+    """Obtem token de teste via Cognito do ambiente dev."""
+    client = boto3.client("cognito-idp", region_name="us-east-1")
+    resp = client.initiate_auth(
+        AuthFlow="USER_PASSWORD_AUTH",
+        AuthParameters={
+            "USERNAME": "usuario-teste-ci",
+            "PASSWORD": "Senha-Teste-CI-123!"   # secret do repositorio
+        },
+        ClientId="CLIENT_ID_DEV"
+    )
+    return resp["AuthenticationResult"]["IdToken"]
+
+def test_segmentacao_cliente_valido(api_token):
+    """TC-INT-01: cliente com dados completos deve retornar segmento."""
+    import requests
+    resp = requests.post(
+        API_URL,
+        headers={"Authorization": f"Bearer {api_token}"},
+        json={"cliente_id": "TESTE-001", "produto": "cartao_credito"},
+        timeout=10
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "segmento" in data
+    assert data["segmento"] in ["PREMIUM", "PADRAO", "BASICO"]
+
+def test_segmentacao_cliente_invalido(api_token):
+    """TC-INT-02: ID inexistente deve retornar 404."""
+    import requests
+    resp = requests.post(
+        API_URL,
+        headers={"Authorization": f"Bearer {api_token}"},
+        json={"cliente_id": "INEXISTENTE-999"},
+        timeout=10
+    )
+    assert resp.status_code == 404
+\end{lstlisting}
+
+\subsection{Passo 3 --- An\'alise de seguran\c{c}a est\'atica}
+
+\begin{lstlisting}[language=bash,
+  caption={Quality gate de seguran\c{c}a: bandit e checkov.},
+  label={lst:security_gate}]
+# Seguranca Python (bandit)
+- name: Bandit -- seguranca estatica Python
+  run: |
+    bandit -r src/ \
+      --level HIGH \
+      --confidence HIGH \
+      --format json \
+      --output bandit-report.json
+    # Falha se houver qualquer item HIGH/HIGH
+    python -c "
+    import json, sys
+    r = json.load(open('bandit-report.json'))
+    highs = [i for i in r['results']
+             if i['issue_severity'] == 'HIGH'
+             and i['issue_confidence'] == 'HIGH']
+    if highs:
+        print(f'FALHA: {len(highs)} itens HIGH encontrados')
+        sys.exit(1)
+    print('OK: nenhum item HIGH/HIGH')
+    "
+
+# Seguranca Terraform (checkov)
+- name: Checkov -- seguranca Terraform
+  uses: bridgecrewio/checkov-action@master
+  with:
+    directory: infraestrutura/
+    framework: terraform
+    soft_fail: false
+    quiet: true
+    output_format: cli
+\end{lstlisting}
+
+\subsection{Passo 4 --- Role IAM com menor privil\'egio via Terraform}
+
+\begin{lstlisting}[language=bash,
+  caption={Role IAM para Lambda de segmenta\c{c}\~ao com menor privil\'egio.},
+  label={lst:iam_least_privilege}]
+# infraestrutura/modules/iam/lambda_segmentacao.tf
+resource "aws_iam_role" "lambda_segmentacao" {
+  name = "lambda-segmentacao-${var.ambiente}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = var.account_id
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_segmentacao_policy" {
+  name = "politica-segmentacao-${var.ambiente}"
+  role = aws_iam_role.lambda_segmentacao.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:us-east-1:${var.account_id}:table/clientes-${var.ambiente}",
+          "arn:aws:dynamodb:us-east-1:${var.account_id}:table/clientes-${var.ambiente}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "arn:aws:secretsmanager:us-east-1:${var.account_id}:secret:llm/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:us-east-1:${var.account_id}:log-group:/aws/lambda/segmentacao-*:*"
+      }
+    ]
+  })
+}
+\end{lstlisting}
+
+Observa-se que nenhuma a\c{c}\~ao cont\'em wildcard e todos os
+\texttt{Resource} apontam para ARNs espec\'ificos do ambiente,
+parametrizados pelas vari\'aveis \texttt{var.account\_id} e
+\texttt{var.ambiente}.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Introduzir um \texttt{eval()} no c\'odigo
+        Python e verificar que o \texttt{bandit} reprovada o gate.
+  \item \textbf{TC-02:} Criar um recurso S3 sem criptografia no
+        Terraform e verificar que o \texttt{checkov} bloqueia o pipeline.
+  \item \textbf{TC-03:} Reduzir a cobertura de testes abaixo de 70\%
+        e verificar que o job falha com mensagem expl\'icita.
+  \item \textbf{TC-04:} Executar os testes de integra\c{c}\~ao contra
+        \texttt{dev} e verificar que TC-INT-01 e TC-INT-02 passam.
+\end{itemize}
+
+\subsection{Teste de conformidade}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TConf-01:} Verificar que o CloudTrail est\'a habilitado
+        em todas as tr\^es contas AWS (dev, homol, prod) com \textit{trails}
+        multirregionais.
+  \item \textbf{TConf-02:} Verificar que o \textit{Access Analyzer} do
+        AWS IAM n\~ao reporta acessos externos n\~ao intencionais.
+  \item \textbf{TConf-03:} Confirmar que nenhuma chave de acesso est\'atica
+        AWS est\'a presente nos \textit{secrets} do reposit\'orio via
+        \texttt{git-secrets} ou \texttt{truffleHog}.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-04 aprovados.
+  \item TConf-01 a TConf-03 aprovados sem exce\c{c}\~ao.
+  \item Cobertura de testes $\geq 70\%$ confirmada para todos os
+        produtos em produ\c{c}\~ao.
+  \item Zero findings CRITICAL no \texttt{checkov} e HIGH/HIGH no
+        \texttt{bandit} nos m\'odulos de produ\c{c}\~ao.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v16.1} --- Integrar \textit{DAST}\index{DAST|textbf}
+        (\textit{Dynamic Application Security Testing}) com OWASP ZAP
+        no est\'agio de homologa\c{c}\~ao, executando varredura ativa
+        contra o endpoint do API Gateway\index{API Gateway} de \texttt{homol}.
+  \item \textbf{v16.2} --- Implementar \textit{Software Bill of Materials}
+        (SBOM\index{SBOM|textbf}) autom\'atico com \texttt{syft} para
+        rastreabilidade de depend\^encias em conformidade com
+        requisitos de auditoria do BACEN.
+  \item \textbf{v16.3} --- Adotar \textit{policy-as-code}\index{policy-as-code}
+        com \textit{Open Policy Agent}\index{Open Policy Agent|textbf} (OPA)
+        para centralizar e versionar pol\'iticas de seguran\c{c}a como
+        c\'odigo, reutiliz\'aveis em todos os produtos.
+  \item \textbf{Lacuna} --- Investigar a adequa\c{c}\~ao ao
+        \textit{CIS AWS Foundations Benchmark} e ao
+        \textit{PCI DSS} v4.0 para produtos que processam dados de cart\~ao.
+\end{itemize}

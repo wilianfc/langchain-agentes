@@ -1,0 +1,270 @@
+\chapter{Ambiente, Ferramentas e Reprodutibilidade}
+\label{chap:ambiente_reprodutibilidade}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+Este cap\'itulo descreve a configura\c{c}\~ao completa do ambiente de
+desenvolvimento adotado no projeto, abrangendo gerenciamento de
+depend\^encias Python\index{Python}, credenciais AWS\index{AWS},
+provisionamento de infraestrutura
+via \textit{Terraform}\index{Terraform|textbf}\index{infraestrutura como c\'odigo|see{Terraform}} e organiza\c{c}\~ao do reposit\'orio. O objetivo
+\'e garantir que qualquer colaborador consiga reproduzir os experimentos
+descritos ao longo do livro a partir de um ambiente zerado, sem
+ambiguidades de vers\~ao ou de configura\c{c}\~ao.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Configurar um ambiente Python~3.11 isolado com todas as
+        depend\^encias do projeto fixadas em vers\~ao exata;
+  \item Organizar credenciais AWS de forma segura utilizando perfis
+        nomeados e vari\'aveis de ambiente;
+  \item Provisionar a infraestrutura AWS (Lambda, DynamoDB, SQS,
+        OpenSearch, Neptune) via \textit{Terraform} em uma \'unica
+        execu\c{c}\~ao reproduz\'ivel;
+  \item Executar os \textit{notebooks} Jupyter do projeto e verificar
+        os resultados esperados de cada se\c{c}\~ao.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos e prerrequisitos}
+% ---------------------------------------------------------------
+
+\subsection{Vers\~oes e depend\^encias}
+
+A reprodutibilidade\index{reprodutibilidade|textbf} de experimentos com LLMs \'e comprometida por tr\^es
+fontes principais de n\~ao-determinismo: (i)~vers\~ao do modelo de
+infer\^encia\index{infer\^encia}, (ii)~vers\~ao das bibliotecas de orquestra\c{c}\~ao e
+(iii)~configura\c{c}\~ao do ambiente de execu\c{c}\~ao. Para mitigar esses
+riscos, o projeto adota as seguintes pr\'aticas:
+
+\begin{itemize}[leftmargin=*]
+  \item Todas as depend\^encias s\~ao declaradas com vers\~ao exata no
+        arquivo \texttt{requirements.txt} (n\~ao utilizar
+        \texttt{\~{}=} ou \texttt{>=} sem limites superiores);
+  \item O modelo de infer\^encia \'e referenciado pelo identificador
+        versionado \texttt{us.anthropic.claude-sonnet-4-5-20250514-v1:0},
+        e n\~ao por alias gen\'erico como \texttt{claude-sonnet-latest};
+  \item A vers\~ao do Python (\texttt{3.11.x}) e do \textit{Terraform}
+        (\texttt{1.7.x}) s\~ao documentadas no arquivo \texttt{README.md}
+        na raiz do reposit\'orio.
+\end{itemize}
+
+\subsection{Estrutura do reposit\'orio}
+
+O reposit\'orio \'e organizado segundo o princ\'ipio de separa\c{c}\~ao
+de responsabilidades, distinguindo c\'odigo de aplica\c{c}\~ao,
+infraestrutura como c\'odigo e artefatos de documenta\c{c}\~ao:
+
+\begin{lstlisting}[language=bash,
+  caption={Estrutura de diret\'orios do reposit\'orio.},
+  label={lst:repo_structure}]
+langchain/
+  infraestrutura/          # Terraform (modulos por servico AWS)
+    modules/
+      lambda/src/          # Codigo das funcoes Lambda
+      opensearch/
+      neptune/
+      dynamodb/
+      sqs/
+      api_gateway/
+  livro/                   # Fonte LaTeX do livro
+    chapters/
+  decisoes_projeto/        # ADRs (Architecture Decision Records)
+  tests/                   # Testes unitarios e de integracao
+  langchain.ipynb          # Notebook didatico principal
+  demo_api.ipynb           # Notebook de demonstracao da API
+  README.md
+\end{lstlisting}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Clonar o reposit\'orio e criar o ambiente virtual\index{ambiente virtual (Python)|textbf}}
+
+\begin{lstlisting}[language=bash,
+  caption={Cria\c{c}\~ao do ambiente virtual Python isolado.},
+  label={lst:venv_setup}]
+git clone https://github.com/<org>/langchain-rag.git
+cd langchain-rag
+
+# Criar e ativar o ambiente virtual
+python3.11 -m venv .venv
+source .venv/bin/activate          # Linux/macOS
+# .venv\Scripts\Activate.ps1       # Windows PowerShell
+
+# Instalar dependencias fixadas
+pip install --upgrade pip
+pip install -r requirements.txt
+\end{lstlisting}
+
+As depend\^encias m\'inimas para executar os notebooks do projeto s\~ao
+listadas abaixo com as vers\~oes verificadas:
+
+\begin{lstlisting}[language=bash,
+  caption={Depend\^encias principais (\texttt{requirements.txt}).},
+  label={lst:requirements}]
+boto3==1.34.69
+langchain==0.2.16
+langchain-community==0.2.16
+langgraph==0.2.4
+faiss-cpu==1.8.0
+tiktoken==0.7.0
+jupyter==1.0.0
+nbformat==5.10.4
+pypdf==4.3.1
+requests==2.32.3
+\end{lstlisting}
+
+\subsection{Passo 2 --- Configurar credenciais AWS}
+
+O acesso aos servi\c{c}os AWS \'e controlado por fun\c{c}\~oes IAM\index{IAM}
+(\textit{Identity and Access Management}\index{Identity and Access Management|see{IAM}}). Para desenvolvimento local,
+utiliza-se um perfil nomeado com permiss\~oes m\'inimas necess\'arias:
+
+\begin{lstlisting}[language=bash,
+  caption={Configura\c{c}\~ao do perfil AWS para desenvolvimento.},
+  label={lst:aws_profile}]
+aws configure --profile langchain-dev
+# AWS Access Key ID:     <ID gerado no IAM>
+# AWS Secret Access Key: <CHAVE>
+# Default region name:   sa-east-1
+# Default output format: json
+
+# Exportar o perfil como variavel de ambiente no shell
+export AWS_PROFILE=langchain-dev
+\end{lstlisting}
+
+\noindent\textbf{Importante:} credenciais n\~ao devem ser
+\textit{hardcoded} no c\'odigo nem versionadas no reposit\'orio.
+Recomenda-se incluir \texttt{.env} e \texttt{*.tfvars} no
+\texttt{.gitignore}.
+
+\subsection{Passo 3 --- Provisionar a infraestrutura com Terraform}
+
+A infraestrutura AWS \'e descrita como c\'odigo no diret\'orio
+\texttt{infraestrutura/}. O provisionamento completo --- incluindo
+VPC\index{VPC|textbf}\index{Virtual Private Cloud|see{VPC}},
+API Gateway\index{API Gateway|textbf},
+filas SQS\index{SQS|textbf}\index{Simple Queue Service|see{SQS}},
+fun\c{c}\~oes Lambda\index{Lambda (AWS)|textbf},
+tabela DynamoDB\index{DynamoDB|textbf},
+dom\'inio OpenSearch\index{OpenSearch|textbf} e cluster Neptune\index{Neptune (AWS)|textbf} ---
+\'e executado com:
+
+\begin{lstlisting}[language=bash,
+  caption={Provisionamento da infraestrutura via Terraform.},
+  label={lst:terraform_apply}]
+cd infraestrutura/
+terraform init
+terraform validate
+terraform plan  -out=deploy.tfplan
+terraform apply deploy.tfplan
+\end{lstlisting}
+
+Ap\'os a conclus\~ao, os \textit{outputs} relevantes --- URL da API,
+\textit{endpoints} do OpenSearch e do Neptune, nome da tabela DynamoDB
+--- s\~ao exibidos no terminal e podem ser capturados com:
+
+\begin{lstlisting}[language=bash,
+  caption={Extra\c{c}\~ao de outputs do Terraform.},
+  label={lst:terraform_output}]
+terraform output -json > ../model_data.json
+\end{lstlisting}
+
+\subsection{Passo 4 --- Executar os notebooks}
+
+Com o ambiente configurado e a infraestrutura provisionada, os
+\textit{notebooks} s\~ao iniciados via Jupyter ou diretamente no
+VS Code com a extens\~ao \textit{Jupyter}:
+
+\begin{lstlisting}[language=bash,
+  caption={Inicializa\c{c}\~ao do servidor Jupyter.},
+  label={lst:jupyter_start}]
+jupyter lab --no-browser --port=8888
+\end{lstlisting}
+
+Recomenda-se executar os notebooks na ordem natural dos cap\'itulos ---
+\texttt{langchain.ipynb} (conceitos) e \texttt{demo\_api.ipynb}
+(demonstra\c{c}\~ao da API) --- pois as c\'elulas iniciais de cada
+\textit{notebook} definem constantes e fun\c{c}\~oes utilizadas
+nas c\'elulas subsequentes.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Executar \texttt{pip install -r requirements.txt}
+        em ambiente zerado e verificar aus\^encia de conflitos de
+        vers\~ao (exit code~0).
+  \item \textbf{TC-02:} Executar \texttt{python -c "import boto3,
+        langchain, langgraph, faiss"} e verificar que nenhum
+        \texttt{ImportError} \'e lan\c{c}ado.
+  \item \textbf{TC-03:} Executar \texttt{aws sts get-caller-identity}
+        com o perfil configurado e verificar que o ARN retornado
+        pertence \`a conta correta.
+  \item \textbf{TC-04:} Executar \texttt{terraform validate} no
+        diret\'orio de infraestrutura e verificar mensagem
+        \texttt{Success! The configuration is valid.}
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} Medir o tempo total de \texttt{terraform apply}
+        em ambiente limpo; crit\'erio: conclus\~ao em menos de
+        20\,minutos para o conjunto completo de m\'odulos.
+  \item \textbf{TP-02:} Medir o tempo de inicializa\c{c}\~ao do
+        kernel Jupyter at\'e a execu\c{c}\~ao da primeira c\'elula
+        de importa\c{c}\~ao; crit\'erio: menos de 30\,s.
+\end{itemize}
+
+\subsection{Teste de qualidade}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} Verificar que o arquivo
+        \texttt{.gitignore} exclui \texttt{*.tfstate},
+        \texttt{*.tfvars} e \texttt{.env} do versionamento.
+  \item \textbf{TQ-02:} Confirmar que nenhuma chave de acesso AWS
+        est\'a presente no hist\'orico de commits via
+        \texttt{git log -{}-all -{}-full-diff | grep -i "AKIA"}.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-04 conclu\'idos sem erros em um ambiente
+        Windows~11 com Python~3.11 e Terraform~1.7.
+  \item TP-01: \texttt{terraform apply} conclu\'ido em menos de
+        20\,minutos (evidenciar com \textit{log} de execu\c{c}\~ao).
+  \item TQ-01 e TQ-02 aprovados; nenhuma credencial versionada
+        detectada.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v2.1} --- Adicionar \textit{devcontainer} Docker para
+        eliminar depend\^encia de instala\c{c}\~ao local de Python e
+        Terraform.
+  \item \textbf{v2.2} --- Incluir pipeline CI/CD (GitHub Actions) que
+        execute \texttt{terraform validate} e os testes unit\'arios a
+        cada \textit{pull request}.
+  \item \textbf{Lacuna} --- Avaliar o uso de \textit{Terraform Workspaces}
+        para isolar ambientes de desenvolvimento, homologa\c{c}\~ao e
+        produ\c{c}\~ao sem duplicar c\'odigo de infraestrutura.
+\end{itemize}

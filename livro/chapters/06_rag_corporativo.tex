@@ -1,0 +1,222 @@
+\chapter{RAG Corporativo e Arquitetura de Dados}
+\label{chap:rag_corporativo}
+
+% ---------------------------------------------------------------
+\section{Escopo do capitulo}
+% ---------------------------------------------------------------
+
+Este capitulo apresenta, em formato de aula-laboratorio, a implementacao de
+um pipeline \textit{Retrieval-Augmented Generation} (RAG\index{RAG|textbf})
+para contexto bancario, com foco em fontes heterogeneas,
+indexacao\index{indexacao (RAG)|textbf}, recuperacao\index{recuperacao semantica}
+e governanca de dados. O objetivo pratico consiste em construir um fluxo no
+qual documentos corporativos e entrevistas de clientes sao convertidos em
+contexto recuperavel para agentes, reduzindo alucinacao e aumentando
+fidelidade da resposta.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este capitulo, o leitor sera capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Diferenciar conhecimento parametricamente aprendido pelo LLM e
+        conhecimento recuperado por RAG;
+  \item Modelar documentos de negocio para indexacao em
+        OpenSearch\index{OpenSearch|textbf};
+  \item Implementar ingestao textual para os tipos
+        \texttt{documento} e \texttt{entrevista};
+  \item Validar, com casos de teste, se a resposta do agente utiliza o
+        contexto recuperado de forma verificavel.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos teoricos}
+% ---------------------------------------------------------------
+
+\subsection{RAG em ambiente regulado}
+
+Em ambiente bancario, perguntas de negocio dependem de politicas, regras de
+produto, condicoes de canal e historico de relacionamento. Essas informacoes
+mudam com frequencia e nao devem depender exclusivamente do conhecimento
+interno do modelo. O padrao RAG injeta contexto em tempo de execucao,
+desacoplando atualizacao documental de novo \textit{fine-tuning}.
+
+\subsection{Tipos de documento no projeto}
+
+O projeto adota dois tipos principais:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{\texttt{documento}:} politicas, FAQ, regras de oferta e
+        materiais normativos;
+  \item \textbf{\texttt{entrevista}:} texto de voz do cliente ou de grupo,
+        utilizado para os modos \textit{persona} e \textit{twin}.
+\end{itemize}
+
+Essa separacao permite governanca por origem e facilita auditoria de qual
+fonte sustentou determinada resposta.
+
+% ---------------------------------------------------------------
+\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Preparar colecao de documentos}
+
+Nesta etapa, organiza-se um conjunto minimo para reproducao da aula:
+
+\begin{lstlisting}[language=bash,
+  caption={Colecao minima para laboratorio de RAG corporativo.},
+  label={lst:rag_dataset_minimo}]
+dados_rag/
+  documentos/
+    politica_investimentos_2026.txt
+    faq_cartao_credito.txt
+  entrevistas/
+    cliente_C00042.txt
+    cluster_1_focus_group.txt
+\end{lstlisting}
+
+Cada arquivo deve conter texto continuo, sem metadados sensiveis. Campos de
+identificacao (cliente ou cluster) devem ser enviados explicitamente no payload.
+
+\subsection{Passo 2 --- Ingerir texto no endpoint \texttt{/documentos}}
+
+O endpoint de ingestao esta definido no contrato OpenAPI e aceita JSON.
+No laboratorio, utiliza-se a chamada abaixo:
+
+\begin{lstlisting}[language=bash,
+  caption={Exemplo de ingestao de documento de politica no RAG.},
+  label={lst:ingestao_documento_api}]
+curl -X POST "$API_URL/documentos" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "documento",
+    "titulo": "Politica de Investimentos 2026",
+    "texto": "Clientes conservadores priorizam liquidez diaria..."
+  }'
+\end{lstlisting}
+
+Para entrevista individual:
+
+\begin{lstlisting}[language=bash,
+  caption={Ingestao de entrevista associada a cliente.},
+  label={lst:ingestao_entrevista_cliente}]
+curl -X POST "$API_URL/documentos" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "entrevista",
+    "titulo": "Entrevista cliente C00042",
+    "cliente_id": "C00042",
+    "texto": "Prefiro resolver tudo no app e evitar taxas altas..."
+  }'
+\end{lstlisting}
+
+\subsection{Passo 3 --- Verificar chunking e indexacao}
+
+A funcao de ingestao fragmenta textos em \textit{chunks}\index{chunking|textbf}
+e os grava em indices OpenSearch distintos para cada finalidade.
+Conceitualmente, o fluxo corresponde a:
+
+\begin{lstlisting}[language=Python,
+  caption={Fluxo simplificado da indexacao no ingester.},
+  label={lst:ingester_fluxo_simplificado}]
+if tipo == "entrevista":
+    chunks = chunkar(texto)
+    indexar("entrevistas-clientes", chunks, metadata)
+else:
+    chunks = chunkar(texto)
+    indexar("documentos-knowledge", chunks, metadata)
+\end{lstlisting}
+
+O resultado esperado da API e um JSON contendo \texttt{chunks\_indexados > 0}.
+
+\subsection{Passo 4 --- Consumir o contexto em consulta real}
+
+Apos indexar, executa-se uma pergunta de negocio no endpoint ass\'incrono:
+
+\begin{lstlisting}[language=bash,
+  caption={Consulta de negocio para verificar uso do contexto RAG.},
+  label={lst:consulta_rag_laboratorio}]
+curl -X POST "$API_URL/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modo": "segmento",
+    "pergunta": "Qual produto devo oferecer para perfil conservador?",
+    "dados_cliente": {
+      "idade": 55,
+      "renda_mensal": 18000,
+      "saldo_medio": 120000,
+      "transacoes_mes": 25,
+      "score_credito": 820,
+      "num_produtos": 7
+    }
+  }'
+\end{lstlisting}
+
+Em seguida, consulta-se \texttt{/status/\{request\_id\}} ate \texttt{COMPLETED}
+e compara-se a resposta com os documentos enviados.
+
+\subsection{Passo 5 --- Resultado completo da aula}
+
+Ao final da pratica, o ambiente deve conter:
+
+\begin{itemize}[leftmargin=*]
+  \item indice \texttt{documentos-knowledge} com politicas e FAQ;
+  \item indice \texttt{entrevistas-clientes} com voz de cliente/grupo;
+  \item resposta do agente sustentada por contexto recuperado;
+  \item evidencias de payload, \texttt{request\_id} e resposta final arquivadas.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do capitulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Ingerir um \texttt{documento} e verificar
+        \texttt{statusCode = 200} e \texttt{chunks\_indexados > 0}.
+  \item \textbf{TC-02:} Ingerir uma \texttt{entrevista} com
+        \texttt{cliente\_id} e validar persistencia no indice de entrevistas.
+  \item \textbf{TC-03:} Executar consulta \texttt{modo=segmento} e confirmar
+        resposta final sem erro de processamento.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} Medir tempo de ingestao de 10 documentos de 2 KB;
+        criterio: mediana $\leq 2{,}5$\,s por documento.
+  \item \textbf{TP-02:} Medir latencia de resposta ass\'incrona ponta a ponta;
+        criterio: p95 $\leq 20$\,s em ambiente \texttt{dev}.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} Verificar, em 10 perguntas, se a resposta cita
+        explicitamente contexto compativel com os documentos indexados.
+  \item \textbf{TQ-02:} Avaliar fidelidade com LLM-as-Judge (Capitulo~\ref{chap:llm_as_judge});
+        criterio: media $\geq 8{,}0/10$.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Criterios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-03 aprovados sem erro bloqueante.
+  \item TP-01 e TP-02 dentro dos limiares definidos.
+  \item TQ-01 com aderencia documental observavel em pelo menos 80\% dos casos.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v6.1} --- Adicionar suporte a PDF/DOCX com pipeline de extracao.
+  \item \textbf{v6.2} --- Incluir versionamento de documento e expiracao por vigencia.
+  \item \textbf{Lacuna} --- Investigar \textit{reranking}\index{reranking} para aumentar precisao top-k.
+\end{itemize}

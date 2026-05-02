@@ -1,0 +1,243 @@
+\chapter{Segmentacao, Personas e Digital Twins}
+\label{chap:segmentacao_personas_twins}
+
+% ---------------------------------------------------------------
+\section{Escopo do capitulo}
+% ---------------------------------------------------------------
+
+Este capitulo implementa, em formato de aula pratica guiada, a transformacao
+de dados de clientes em tres tipos de agentes de pesquisa: agente por
+segmento, agente \textit{persona}\index{persona (IA)|textbf} e
+\textit{digital twin}\index{digital twin|textbf}. O fluxo combina
+clusterizacao\index{clusterizacao|textbf} com K-Means\index{K-Means|textbf},
+geracao de contexto RAG por grupo e criacao sob demanda de agentes para
+respostas em primeira ou terceira pessoa conforme o objetivo analitico.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este capitulo, o leitor sera capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Treinar e aplicar K-Means para segmentacao de clientes;
+  \item Construir documentos RAG por cluster e por cliente;
+  \item Diferenciar os modos \texttt{segmento}, \texttt{persona} e \texttt{twin};
+  \item Validar, com casos controlados, a consistencia de resposta de cada modo.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos teoricos}
+% ---------------------------------------------------------------
+
+\subsection{Tres superficies de analise}
+
+O projeto adota tres superficies complementares:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Segmento:} resposta gerencial em terceira pessoa com base
+        no perfil medio do cluster;
+  \item \textbf{Persona:} arqu\'etipo nomeado de um cluster, respondendo em
+        primeira pessoa representativa;
+  \item \textbf{Twin:} simulacao individual, baseada em dados reais do
+        cliente e contexto RAG filtrado por \texttt{cliente\_id}.
+\end{itemize}
+
+\subsection{Features de clusterizacao}
+
+O vetor de entrada utiliza, minimamente, as variaveis:
+\texttt{idade}, \texttt{renda\_mensal}, \texttt{saldo\_medio},
+\texttt{transacoes\_mes}, \texttt{score\_credito} e
+\texttt{num\_produtos}. Antes do K-Means, aplica-se
+padronizacao\index{padronizacao (ML)|textbf} com
+\textit{StandardScaler}\index{StandardScaler}.
+
+% ---------------------------------------------------------------
+\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Gerar base sintetica e executar clustering}
+
+O laboratorio inicia com dados sinteticos para reproducao local:
+
+\begin{lstlisting}[language=Python,
+  caption={Treino de clusterizacao e previsao de cluster.},
+  label={lst:clustering_lab}]
+df = gerar_dados_sinteticos(n=1000)
+kmeans, scaler, perfis = executar_clustering(df, n_clusters=4)
+
+cliente_exemplo = {
+    "idade": 55,
+    "renda_mensal": 18000,
+    "saldo_medio": 120000,
+    "transacoes_mes": 25,
+    "score_credito": 820,
+    "num_produtos": 7,
+}
+
+cluster_id = int(kmeans.predict(scaler.transform([[ 
+    cliente_exemplo["idade"],
+    cliente_exemplo["renda_mensal"],
+    cliente_exemplo["saldo_medio"],
+    cliente_exemplo["transacoes_mes"],
+    cliente_exemplo["score_credito"],
+    cliente_exemplo["num_produtos"],
+]]))[0])
+\end{lstlisting}
+
+\subsection{Passo 2 --- Criar contexto RAG por cluster}
+
+Cada cluster gera documentos de contexto com perfil medio, produtos e
+estrategia de abordagem. O material e indexado no OpenSearch para
+recuperacao posterior.
+
+\begin{lstlisting}[language=Python,
+  caption={Geracao de documentos RAG por cluster.},
+  label={lst:docs_cluster_lab}]
+for cid, perfil in perfis.iterrows():
+    docs = _gerar_docs_cluster(cid, perfil)
+    indexar_docs_cluster(cid, docs)  # abstrai o backend (FAISS/OpenSearch)
+\end{lstlisting}
+
+\subsection{Passo 3 --- Instanciar agente persona}
+
+O modo \texttt{persona} reaproveita contexto do cluster, mas muda voz e
+comportamento por meio de \textit{system prompt} dedicado.
+
+\begin{lstlisting}[language=Python,
+  caption={Criacao de agente persona por cluster.},
+  label={lst:persona_lab}]
+agente_persona = _criar_agente_persona(
+    cluster_id=cluster_id,
+    perfil=perfis.loc[cluster_id],
+    retriever=retriever_cluster(cluster_id),
+    model=modelo_llm,
+)
+
+resposta = agente_persona.invoke({"pergunta": "O que voce espera de um cartao?"})
+\end{lstlisting}
+
+\subsection{Passo 4 --- Criar digital twin sob demanda}
+
+No modo \texttt{twin}, o agente nao depende da rotulagem de cluster; ele e
+construido com base no registro individual e no retriever filtrado por
+\texttt{cliente\_id}.
+
+\begin{lstlisting}[language=Python,
+  caption={Twin sob demanda com contexto individual.},
+  label={lst:twin_lab}]
+twin = criar_twin_sob_demanda(
+    cliente_id="C00042",
+    dados_cliente=cliente_exemplo,
+    model=modelo_llm,
+)
+
+out = twin.invoke({"pergunta": "Como posso melhorar meu score de credito?"})
+\end{lstlisting}
+
+\subsection{Passo 5 --- Chamar a API em cada modo}
+
+O laboratorio fecha o ciclo testando os tres modos pela API:
+
+\begin{lstlisting}[language=bash,
+  caption={Chamadas de validacao dos modos segmento, persona e twin.},
+  label={lst:modos_api_lab}]
+# segmento
+curl -X POST "$API_URL/query" -H "Content-Type: application/json" -d '{
+  "modo": "segmento", "pergunta": "Qual oferta para este cliente?", "dados_cliente": {...}
+}'
+
+# persona
+curl -X POST "$API_URL/query" -H "Content-Type: application/json" -d '{
+  "modo": "persona", "cluster_id": 1, "pergunta": "O que voce valoriza em investimentos?"
+}'
+
+# twin
+curl -X POST "$API_URL/query" -H "Content-Type: application/json" -d '{
+  "modo": "twin", "cliente_id": "C00042", "pergunta": "Qual o melhor proximo produto para mim?", "dados_cliente": {...}
+}'
+\end{lstlisting}
+
+\subsection{Passo 6 --- Resultado completo da aula}
+
+Ao final, o aluno deve conseguir demonstrar:
+
+\begin{itemize}[leftmargin=*]
+  \item classificacao automatica do cliente em cluster;
+  \item resposta gerencial (segmento), arquetipica (persona) e individual (twin);
+  \item coerencia entre contexto recuperado e estilo de resposta por modo.
+\end{itemize}
+
+\subsection{Passo 7 --- Evidencias de execucao em producao}
+
+Em teste de smoke test na AWS, executado pelo frontend CloudFront integrado a
+API Gateway, os modos \texttt{persona} e \texttt{twin} apresentaram
+conclusao com estado \texttt{COMPLETED}, mantendo aderencia de voz em primeira
+pessoa e recomendacoes compativeis com o contexto recuperado.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Persona} (\texttt{cluster\_id=1}):
+        \texttt{request\_id}: \nolinkurl{ddbc5210-63fc-47bc-a274-283e60be84bc}. \par
+        Estado final \texttt{COMPLETED};
+  \item \textbf{Twin} (\texttt{cliente\_id=C00042}):
+        \texttt{request\_id}: \nolinkurl{e5e348e7-d266-4ae9-9f26-eb0e659a56a7}. \par
+        Estado final \texttt{COMPLETED}.
+\end{itemize}
+
+Como resultado, observa-se que a estrategia de segmentacao e a construcao do
+agente individual permanecem operacionalmente consistentes no ambiente
+implantado, e nao apenas em execucao local de laboratorio.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do capitulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} classificar 50 clientes e verificar ausencia de erro
+        de dimensao no \textit{scaler}/K-Means.
+  \item \textbf{TC-02:} executar \texttt{modo=persona} com \texttt{cluster\_id}
+        explicito e retornar resposta em primeira pessoa.
+  \item \textbf{TC-03:} executar \texttt{modo=twin} com \texttt{cliente\_id}
+        e confirmar uso de contexto individual.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} tempo de classificacao por cliente $\leq 50$\,ms.
+  \item \textbf{TP-02:} latencia mediana da inferencia por modo
+        $\leq 5$\,s em \texttt{dev}.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} em 10 perguntas por modo, verificar aderencia de tom
+        (3a pessoa em segmento; 1a pessoa em persona/twin).
+  \item \textbf{TQ-02:} avaliar fidelidade com LLM-as-Judge;
+        criterio: media $\geq 8{,}0/10$ por modo.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Criterios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-03 aprovados.
+  \item TP-01 e TP-02 dentro dos limites definidos.
+  \item TQ-01 com conformidade de voz em pelo menos 90\% dos casos.
+  \item Execucao real em producao com modos \texttt{persona} e \texttt{twin}
+        finalizando em \texttt{COMPLETED}.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v8.1} --- Incorporar cache LRU para twins de alta frequencia.
+  \item \textbf{v8.2} --- Evoluir para clusterizacao periodica com janela movel.
+  \item \textbf{Lacuna} --- Investigar validacao causal para evitar vies de segmentacao.
+\end{itemize}

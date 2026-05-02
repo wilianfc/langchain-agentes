@@ -1,0 +1,340 @@
+\chapter{Fundamentos de IA e Modelos de Linguagem de Grande Escala}
+\label{chap:fundamentos_llm_ia}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+Este cap\'itulo apresenta os conceitos fundamentais que sustentam toda a
+arquitetura desenvolvida ao longo do livro: modelos de linguagem de grande
+escala (do ingl\^es \textit{Large Language Models} --- LLMs), mecanismos de
+atenção, tokeniza\c{c}\~ao, janelas de contexto e engenharia de
+\textit{prompts}. Ao dominar esses conceitos, o leitor adquire a base
+te\'orica necess\'aria para compreender as decis\~oes de projeto adotadas
+nos cap\'itulos subsequentes, em especial a escolha do modelo
+\textit{Claude Sonnet} via \textit{Amazon Bedrock} como n\'ucleo de infer\^encia
+da plataforma.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Descrever a arquitetura \textit{Transformer} e o papel do mecanismo
+        de aten\c{c}\~ao na gera\c{c}\~ao de texto;
+  \item Explicar o processo de tokeniza\c{c}\~ao e calcular o consumo
+        estimado de \textit{tokens} de uma requisi\c{c}\~ao;
+  \item Formular \textit{prompts} eficazes utilizando as t\'ecnicas
+        \textit{zero-shot}, \textit{few-shot} e
+        \textit{chain-of-thought} (CoT)\footnote{%
+          \textit{Chain-of-Thought} \'e uma t\'ecnica de
+          \textit{prompting} que instrui o modelo a exibir o racioc\'inio
+          passo a passo antes de produzir a resposta final
+          \cite{wei2022chain}.};
+  \item Identificar os par\^ametros de amostragem --- temperatura,
+        \textit{top-p} e \textit{top-k} --- e seu impacto na qualidade
+        e na diversidade das respostas;
+  \item Invocar o modelo \textit{Claude Sonnet} via API
+        \textit{Amazon Bedrock} a partir de c\'odigo Python.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Arquitetura Transformer}
+
+A arquitetura \textit{Transformer}\index{Transformer|textbf}\index{arquitetura!Transformer},
+proposta por \citeonline{vaswani2017attention},
+revolucionou o processamento de linguagem natural\index{PLN|see{processamento de linguagem natural}}\index{processamento de linguagem natural}
+ao substituir redes recorrentes\index{redes recorrentes}
+pelo mecanismo de \textit{self-attention}\index{self-attention|textbf}\index{aten\c{c}\~ao!self-attention},
+que permite ao modelo relacionar
+quaisquer dois tokens da sequ\^encia de entrada independentemente de sua
+dist\^ancia posicional. Formalmente, a aten\c{c}\~ao \'e calculada como:
+
+\begin{equation}
+  \text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
+  \label{eq:attention}
+\end{equation}
+
+\noindent em que $Q$, $K$ e $V$ s\~ao as matrizes de consulta
+(\textit{query}), chave (\textit{key}) e valor (\textit{value}),
+respectivamente, e $d_k$ \'e a dimens\~ao da chave, utilizada como fator
+de normaliza\c{c}\~ao para estabilizar os gradientes durante o treinamento.
+A fun\c{c}\~ao \textit{softmax}\index{softmax|textbf}\footnote{%
+  $\sigma(\mathbf{z})_i = e^{z_i}/\!\sum_j e^{z_j}$ --- converte o vetor
+  de \textit{logits} em distribui\c{c}\~ao de probabilidade. Defini\c{c}\~ao
+  formal no Ap\^endice~\ref{apendice:glossario_matematico},
+  p.~\pageref{sec:softmax}.} normaliza os produtos escalados, produzindo
+pesos de aten\c{c}\~ao que somam 1. O empilhamento de m\'ultiplas camadas de
+aten\c{c}\~ao multi-cabe\c{c}a\index{aten\c{c}\~ao!multi-head}
+(\textit{multi-head attention}) confere ao modelo a capacidade de capturar
+padr\~oes sint\'aticos, sem\^anticos e pragm\'aticos simultaneamente.
+
+LLMs s\~ao modelos \textit{Transformer} de \'unico-encoder-decoder ou
+somente-decoder\index{decoder} treinados em corpora massivos mediante o objetivo de
+previs\~ao do pr\'oximo \textit{token}\index{token} (\textit{next-token prediction}\index{next-token prediction}).
+O volume de dados e par\^ametros --- tipicamente da ordem de bilh\~oes
+--- confere a esses modelos capacidades emergentes n\~ao observadas em
+escalas menores, como racioc\'inio l\'ogico, tradu\c{c}\~ao sem
+supervis\~ao expl\'icita e gera\c{c}\~ao de c\'odigo
+\cite{wei2022emergent}.
+
+\subsection{Tokeniza\c{c}\~ao}
+
+\textit{Tokens}\index{token} s\~ao as unidades m\'inimas de processamento de um LLM,
+obtidos por meio de algoritmos de segmenta\c{c}\~ao subpalavra\index{segmenta\c{c}\~ao subpalavra}, como
+\textit{Byte-Pair Encoding}\index{Byte-Pair Encoding|textbf}\index{BPE|see{Byte-Pair Encoding}} (BPE)\footnote{%
+  Defini\c{c}\~ao formal e pseudoc\'odigo no
+  Ap\^endice~\ref{apendice:glossario_matematico}, p.~\pageref{sec:bpe}.} e
+\textit{SentencePiece}\index{SentencePiece}\footnote{%
+  Defini\c{c}\~ao e compara\c{c}\~ao com BPE no
+  Ap\^endice~\ref{apendice:glossario_matematico}, p.~\pageref{sec:sentencepiece}.}. A rela\c{c}\~ao
+entre palavras e \textit{tokens} varia conforme o vocabul\'ario do modelo;
+como regra pr\'atica, estima-se que 1.000 palavras em portugu\^es equivalem
+a aproximadamente 1.300--1.500 \textit{tokens} no modelo \textit{Claude
+Sonnet}.
+
+O custo operacional e a lat\^encia de infer\^encia s\~ao diretamente
+proporcionais ao n\'umero de \textit{tokens} processados, tornando a
+contagem pr\'evia um fator cr\'itico no dimensionamento da plataforma.
+No projeto descrito neste livro, adota-se a biblioteca \texttt{tiktoken}
+\cite{tiktoken2023} como estimador de \textit{tokens} nos benchmarks de
+desempenho apresentados no Cap\'itulo~\ref{chap:avaliacao_metricas_mercado}.
+
+\subsection{Janela de Contexto}
+
+A janela de contexto\index{janela de contexto|textbf} (\textit{context window}\index{context window|see{janela de contexto}}) define o n\'umero m\'aximo
+de \textit{tokens} --- somando-se entrada e sa\'ida --- que o modelo
+processa em uma \'unica requisi\c{c}\~ao. O \textit{Claude Sonnet~4.5},
+utilizado na plataforma, suporta at\'e 200.000 \textit{tokens} de entrada,
+o que possibilita a ingest\~ao de documentos extensos sem necessidade de
+segmenta\c{c}\~ao agressiva. Todavia, o custo por \textit{token} de entrada
+\'e inferior ao de sa\'ida; portanto, o projeto limita a janela de
+contexto injetada pelo pipeline RAG --- descrito no
+Cap\'itulo~\ref{chap:rag_fundamentos} --- a 8.000 \textit{tokens}, valor
+determinado empiricamente como suficiente para manter alta qualidade de
+resposta sem comprometer a lat\^encia.
+
+\subsection{Par\^ametros de Amostragem}
+
+A distribui\c{c}\~ao de probabilidade sobre o vocabul\'ario na etapa de
+decodifica\c{c}\~ao\index{decodifica\c{c}\~ao} \'e modulada por tr\^es par\^ametros principais:
+
+\begin{description}
+  \item[Temperatura ($\tau$)\index{temperatura (LLM)|textbf}] Reescala os logits\index{logits}\footnote{%
+        \textit{Logits}: valores reais n\~ao normalizados produzidos pela
+        \'ultima camada linear do modelo. Defini\c{c}\~ao formal no
+        Ap\^endice~\ref{apendice:glossario_matematico}, p.~\pageref{sec:logits}.}
+        antes do
+        \textit{softmax}\index{softmax}\footnote{%
+        Fun\c{c}\~ao $\sigma(\mathbf{z})_i = e^{z_i}/\sum_j e^{z_j}$
+        que converte logits em distribui\c{c}\~ao de probabilidade. Defini\c{c}\~ao
+        completa no Ap\^endice~\ref{apendice:glossario_matematico},
+        p.~\pageref{sec:softmax}.}: valores baixos ($\tau \to 0$) tornam a
+        distribui\c{c}\~ao mais pontuda, favorecendo respostas
+        deterministas; valores altos ($\tau > 1$) aumentam a entropia
+        e, portanto, a diversidade da gera\c{c}\~ao.
+  \item[\textit{Top-p}\index{top-p|textbf}\index{amostragem por n\'ucleo|see{top-p}} (amostragem por n\'ucleo)] Restringe o
+        vocabul\'ario ativo ao menor conjunto de \textit{tokens} cuja
+        probabilidade acumulada supera $p$; valores t\'ipicos situam-se
+        entre $0,85$ e $0,95$.
+  \item[\textit{Top-k}\index{top-k|textbf}] Limita a amostragem aos $k$ \textit{tokens}
+        mais prov\'aveis; \'e frequentemente combinado com
+        \textit{top-p} para eliminar candidatos de baixa probabilidade.
+\end{description}
+
+No projeto, adota-se $\tau = 0{,}3$ nas consultas RAG de modo
+\texttt{segmento} e \texttt{persona}, priorizando consist\^encia
+e fidelidade ao contexto recuperado. Consultas de modo
+\texttt{twin} utilizam $\tau = 0{,}5$ para permitir maior
+variabilidade na reprodu\c{c}\~ao do comportamento individual.
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Configura\c{c}\~ao das credenciais AWS}
+
+O acesso ao \textit{Amazon Bedrock}\index{Amazon Bedrock|textbf}\index{Bedrock|see{Amazon Bedrock}} requer credenciais IAM\index{IAM}\index{Identity and Access Management|see{IAM}} com a permiss\~ao
+\texttt{bedrock:InvokeModel}. Recomenda-se utilizar perfis nomeados via
+\texttt{AWS CLI} para evitar a gest\~ao manual de chaves no c\'odigo:
+
+\begin{lstlisting}[language=bash, caption={Configura\c{c}\~ao de perfil AWS CLI.}]
+aws configure --profile langchain-dev
+# AWS Access Key ID: <ID>
+# AWS Secret Access Key: <CHAVE>
+# Default region name: us-east-1
+# Default output format: json
+\end{lstlisting}
+
+\subsection{Passo 2 --- Primeira chamada ao modelo}
+
+O cliente Bedrock \'e instanciado via \texttt{boto3}, e a
+requisi\c{c}\~ao \'e formatada conforme a API \textit{Messages} da
+Anthropic:
+
+\begin{lstlisting}[language=Python,
+  caption={Primeira chamada ao \textit{Claude Sonnet} via Bedrock.},
+  label={lst:bedrock_hello}]
+import boto3, json
+
+MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250514-v1:0"
+REGION   = "us-east-1"
+
+client = boto3.client("bedrock-runtime", region_name=REGION)
+
+payload = {
+    "anthropic_version": "bedrock-2023-05-31",
+    "max_tokens": 512,
+    "temperature": 0.3,
+    "messages": [
+        {
+            "role": "user",
+            "content": "Explique o conceito de tokenizacao em LLMs "
+                       "em ate tres paragrafos, estilo academico."
+        }
+    ]
+}
+
+response = client.invoke_model(
+    modelId=MODEL_ID,
+    body=json.dumps(payload),
+    contentType="application/json",
+    accept="application/json"
+)
+
+body   = json.loads(response["body"].read())
+texto  = body["content"][0]["text"]
+tokens = body["usage"]          # input_tokens, output_tokens
+
+print(texto)
+print(f"\nTokens consumidos: entrada={tokens['input_tokens']}, "
+      f"saida={tokens['output_tokens']}")
+\end{lstlisting}
+
+Verifica-se que o campo \texttt{usage} retornado pela API cont\'em a
+contagem exata de \textit{tokens} de entrada e sa\'ida, permitindo o
+rastreamento preciso dos custos de infer\^encia.
+
+\subsection{Passo 3 --- Engenharia de \textit{prompts}}
+
+A qualidade da resposta \'e sens\'ivel \`a estrutura do \textit{prompt}.
+O padr\~ao adotado no projeto separa o \textit{system prompt}\index{prompt!system prompt|textbf} --- que
+define o papel, o tom e as restri\c{c}\~oes do modelo --- das mensagens
+de usu\'ario, conforme recomendado pela documenta\c{c}\~ao da Anthropic
+\cite{anthropic2024prompting}:
+
+\begin{lstlisting}[language=Python,
+  caption={Estrutura de \textit{system prompt} e mensagem de usu\'ario.},
+  label={lst:prompt_structure}]
+payload = {
+    "anthropic_version": "bedrock-2023-05-31",
+    "max_tokens": 1024,
+    "temperature": 0.3,
+    "system": (
+        "Voce e um assistente especializado em analise de clientes "
+        "bancarios. Responda em portugues do Brasil, estilo formal, "
+        "com base exclusivamente no contexto fornecido. "
+        "Nao invente informacoes ausentes do contexto."
+    ),
+    "messages": [
+        {
+            "role": "user",
+            "content": (
+                "<context>\n{contexto_recuperado}\n</context>\n\n"
+                "Pergunta: {pergunta_usuario}"
+            )
+        }
+    ]
+}
+\end{lstlisting}
+
+O uso de delimitadores XML (\texttt{<context>}) \'e recomendado para
+que o modelo distinga claramente o contexto recuperado da
+instru\c{c}\~ao, reduzindo o risco de alucina\c{c}\~oes.
+
+\subsection{Passo 4 --- T\'ecnica \textit{few-shot}}
+
+Exemplos de entrada--sa\'ida inseridos no \textit{prompt}
+(\textit{few-shot examples}\index{few-shot|textbf}\index{prompt!few-shot}) calibram o formato e o registro das
+respostas sem necessidade de ajuste fino\index{fine-tuning|textbf} (\textit{fine-tuning}). No
+projeto, cada modo de consulta --- \texttt{segmento}, \texttt{persona}
+e \texttt{twin} --- utiliza de dois a tr\^es exemplos curados que
+demonstram a estrutura esperada da resposta, conforme detalhado no
+Cap\'itulo~\ref{chap:segmentacao_personas_twins}.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Invocar o modelo com \textit{prompt} m\'inimo
+        e verificar que o campo \texttt{content[0].text} est\'a
+        preenchido e n\~ao \'e vazio.
+  \item \textbf{TC-02:} Passar um \textit{prompt} com temperatura
+        $\tau = 0$ e verificar que duas execu\c{c}\~oes consecutivas
+        produzem sa\'idas id\^enticas (determinismo).
+  \item \textbf{TC-03:} Exceder o limite de \textit{max\_tokens} e
+        confirmar que a resposta \'e truncada com o motivo
+        \texttt{max\_tokens} no campo \texttt{stop\_reason}.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} Medir a lat\^encia de 10 chamadas
+        consecutivas com \textit{prompt} de 500 \textit{tokens};
+        crit\'erio: mediana $\leq 3{,}0$\,s (regi\~ao
+        \texttt{us-east-1}).
+  \item \textbf{TP-02:} Calcular o custo estimado por 1.000
+        requisi\c{c}\~oes de 1.000 \textit{tokens} de entrada e
+        500 de sa\'ida com base na tabela de pre\c{c}os
+        \textit{on-demand} do Bedrock.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} Formular cinco perguntas de refer\^encia
+        sobre tokeniza\c{c}\~ao e avaliar as respostas quanto \`a
+        precis\~ao factual (escala 1--5).
+  \item \textbf{TQ-02:} Verificar que a resposta a uma pergunta
+        fora do contexto retorna a express\~ao de aus\^encia de
+        informa\c{c}\~ao, sem alucina\c{c}\~ao.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01, TC-02 e TC-03 executam sem erros bloqueantes.
+  \item TP-01: mediana de lat\^encia $\leq 3{,}0$\,s confirmada em
+        execu\c{c}\~ao real (evidenciar com \textit{log} de timestamps).
+  \item TQ-01: pontua\c{c}\~ao m\'edia $\geq 4{,}0/5{,}0$.
+  \item TQ-02: zero alucina\c{c}\~oes detectadas nas cinco perguntas
+        fora de contexto.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v1.1} --- Adicionar compara\c{c}\~ao de modelos:
+        \textit{Claude Haiku} (baixo custo) vs. \textit{Claude Sonnet}
+        (equil\'ibrio) vs. \textit{Claude Opus} (m\'axima qualidade),
+        com m\'etricas de lat\^encia e custo por token.
+  \item \textbf{v1.2} --- Incluir diagrama da arquitetura
+        \textit{Transformer} (codificador e decodificador) adaptado
+        ao estilo do livro.
+  \item \textbf{Lacuna} --- Avaliar impacto de diferentes estrat\'egias
+        de truncamento de contexto (\textit{sliding window} vs.
+        sumariza\c{c}\~ao hier\'arquica) na qualidade das respostas.
+\end{itemize}

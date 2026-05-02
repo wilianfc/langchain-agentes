@@ -1,0 +1,313 @@
+\chapter{Agentes com LangGraph e Mem\'oria}
+\label{chap:agentes_langgraph_memoria}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+Este cap\'itulo apresenta a constru\c{c}\~ao de agentes de IA\index{agente (IA)|textbf} orientados
+a grafos de estado utilizando a biblioteca \textit{LangGraph}\index{LangGraph|textbf}
+\cite{langgraph2024}, que estende o \textit{LangChain}\index{LangChain}
+\cite{chase2022langchain} com suporte nativo a ciclos, persist\^encia
+de estado e orquestra\c{c}\~ao de m\'ultiplos atores. O ciclo ReAct\index{ReAct|textbf}
+(\textit{Reason + Act}), proposto por \citeonline{yao2023react}, \'e
+adotado como padr\~ao de racioc\'inio; o agente alterna entre etapas
+de an\'alise (\textit{thought}\index{thought (ReAct)}), invoca\c{c}\~ao de ferramentas
+(\textit{action}\index{action (ReAct)}) e observa\c{c}\~ao dos resultados (\textit{observation}\index{observation (ReAct)})
+at\'e satisfazer o crit\'erio de parada. A gest\~ao de mem\'oria\index{mem\'oria!agentes} ---
+tanto de curto prazo (hist\'orico de mensagens) quanto de m\'edio prazo
+(vetor sem\^antico\index{vetor sem\^antico} FAISS\index{FAISS|textbf}) --- \'e descrita e implementada ao longo do
+cap\'itulo.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Modelar o comportamento de um agente como um grafo de estados
+        tipado com \texttt{TypedDict} e arestas condicionais;
+  \item Implementar o ciclo ReAct com o \textit{LangGraph} conectando
+        um n\'o de racioc\'inio ao \textit{Claude Sonnet} e n\'os de
+        a\c{c}\~ao a ferramentas externas;
+  \item Gerenciar a mem\'oria de curto prazo por meio do hist\'orico
+        de mensagens (\texttt{MessagesState}) e persistir o estado entre
+        invoca\c{c}\~oes com \texttt{MemorySaver};
+  \item Integrar mem\'oria vetorial FAISS como fonte de
+        recupera\c{c}\~ao sem\^antica para subsidiar as decis\~oes
+        do agente.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Grafo de estados e n\'os de processamento}
+
+No \textit{LangGraph}, um agente \'e modelado como um grafo dirigido\index{grafo dirigido}
+em que cada n\'o \'e uma fun\c{c}\~ao Python que recebe e retorna um
+dicion\'ario de estado. O estado \'e definido por uma classe
+\texttt{TypedDict}\index{TypedDict} que declara explicitamente os campos trocados entre
+os n\'os, garantindo segurança de tipos em tempo de compila\c{c}\~ao:
+
+\begin{lstlisting}[language=Python,
+  caption={Defini\c{c}\~ao do estado do agente.},
+  label={lst:agent_state}]
+from typing import TypedDict, Annotated, Sequence
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
+
+class EstadoAgente(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    contexto_rag: str
+    tentativas: int
+\end{lstlisting}
+
+O redutor \texttt{add\_messages}\index{add\_messages} garante que novas mensagens sejam
+acumuladas em vez de substituirem o hist\'orico, preservando o contexto
+de conversa\c{c}\~ao entre turnos. O campo \texttt{messages} corresponde
+ao tipo \texttt{MessagesState}\index{MessagesState|textbf} --- abstra\c{c}\~ao de conveni\^encia
+do \textit{LangGraph} que combina a lista de mensagens com o redutor
+\texttt{add\_messages}.
+
+\subsection{Ciclo ReAct}
+
+O ciclo ReAct \'e implementado como uma sequ\^encia de arestas no
+grafo: o n\'o \texttt{raciocinar} invoca o LLM e gera uma mensagem
+que pode conter chamadas de ferramenta (\textit{tool calls}); o n\'o
+\texttt{executar\_ferramentas} processa essas chamadas e retorna as
+observa\c{c}\~oes; a aresta condicional \texttt{deve\_continuar}
+verifica se o LLM solicitou mais ferramentas ou produziu uma resposta
+final, determinando o pr\'oximo n\'o. Conforme
+\citeonline{yao2023react}, a interloca\c{c}\~ao entre racioc\'inio e
+a\c{c}\~ao aumenta significativamente a taxa de sucesso em tarefas
+de question-answering multietapas em compara\c{c}\~ao com abordagens
+puramente encadeadas.
+
+\subsection{Persist\^encia de estado com \texttt{MemorySaver}}
+
+O \texttt{MemorySaver}\index{MemorySaver|textbf} \'e um \textit{checkpointer}\index{checkpointer} que persiste o
+estado do grafo entre invoca\c{c}\~oes em mem\'oria local (adequado
+para desenvolvimento) ou em banco de dados externo (adequado para
+produ\c{c}\~ao). Cada sess\~ao de conversa\c{c}\~ao \'e identificada por
+um \texttt{thread\_id}\index{thread\_id}, permitindo que o agente retome o contexto
+ap\'os interrup\c{c}\~oes sem reprocessar o hist\'orico completo.
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Definir as ferramentas do agente}
+
+Ferramentas\index{ferramenta (agente)|textbf} s\~ao fun\c{c}\~oes Python decoradas com
+\texttt{@tool}\index{@tool}, que exp\~oem ao LLM uma interface descritiva com
+\textit{docstring} e assinatura de tipos:
+
+\begin{lstlisting}[language=Python,
+  caption={Defini\c{c}\~ao de ferramentas com \texttt{@tool}.},
+  label={lst:tools_definition}]
+from langchain_core.tools import tool
+
+@tool
+def buscar_perfil_cliente(cliente_id: str) -> dict:
+    """Recupera o perfil de um cliente bancario pelo ID.
+    Retorna segmento, score de credito e produtos ativos."""
+    # Implementacao: consulta DynamoDB / OpenSearch
+    ...
+
+@tool
+def calcular_score_credito(renda: float, dividas: float) -> float:
+    """Calcula o score de credito simplificado dado renda e dividas.
+    Retorna um valor entre 0.0 e 1.0."""
+    return max(0.0, min(1.0, (renda - dividas) / renda))
+
+ferramentas = [buscar_perfil_cliente, calcular_score_credito]
+\end{lstlisting}
+
+\subsection{Passo 2 --- Construir o grafo ReAct}
+
+O grafo \'e instanciado com \texttt{StateGraph}\index{StateGraph|textbf} --- classe central do
+\textit{LangGraph} que recebe o tipo de estado e gerencia n\'os e arestas.
+O modelo de linguagem \'e acessado via \texttt{ChatBedrock}\index{ChatBedrock|textbf}, cliente
+\textit{LangChain} para o \textit{Amazon Bedrock}. A execu\c{c}\~ao das
+ferramentas \'e delegada ao \texttt{ToolNode}\index{ToolNode|textbf}, n\'o pr\'e-constru\'ido
+que processa automaticamente as \textit{tool calls} retornadas pelo LLM:
+
+\begin{lstlisting}[language=Python,
+  caption={Constru\c{c}\~ao do grafo de agente ReAct com \textit{LangGraph}.},
+  label={lst:langgraph_react}]
+import boto3
+from langchain_aws import ChatBedrock
+from langchain_core.messages import SystemMessage
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
+
+MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250514-v1:0"
+
+llm = ChatBedrock(
+    model_id=MODEL_ID,
+    region_name="us-east-1",
+    model_kwargs={"temperature": 0.3, "max_tokens": 2048}
+).bind_tools(ferramentas)
+
+SYSTEM = SystemMessage(content=(
+    "Voce e um assistente financeiro especializado. "
+    "Use as ferramentas disponiveis para responder com precisao. "
+    "Nunca invente dados ausentes nas ferramentas."
+))
+
+def raciocinar(state: EstadoAgente) -> dict:
+    resposta = llm.invoke([SYSTEM] + list(state["messages"]))
+    return {"messages": [resposta]}
+
+def deve_continuar(state: EstadoAgente) -> str:
+    ultima = state["messages"][-1]
+    return "ferramentas" if ultima.tool_calls else END
+
+grafo = StateGraph(EstadoAgente)
+grafo.add_node("raciocinar", raciocinar)
+grafo.add_node("ferramentas", ToolNode(ferramentas))
+grafo.set_entry_point("raciocinar")
+grafo.add_conditional_edges("raciocinar", deve_continuar)
+grafo.add_edge("ferramentas", "raciocinar")
+
+agente = grafo.compile(checkpointer=MemorySaver())
+\end{lstlisting}
+
+\subsection{Passo 3 --- Invocar o agente com persist\^encia de contexto}
+
+\begin{lstlisting}[language=Python,
+  caption={Invoca\c{c}\~ao do agente com \texttt{thread\_id} para persist\^encia de contexto.},
+  label={lst:agent_invoke}]
+from langchain_core.messages import HumanMessage
+
+config = {"configurable": {"thread_id": "sessao-cliente-001"}}
+
+# Primeiro turno
+resultado = agente.invoke(
+    {"messages": [HumanMessage(content="Qual o perfil do cliente C-0042?")]},
+    config=config
+)
+print(resultado["messages"][-1].content)
+
+# Segundo turno -- agente retoma o historico do thread
+resultado = agente.invoke(
+    {"messages": [HumanMessage(content="E o score de credito dele?")]},
+    config=config
+)
+print(resultado["messages"][-1].content)
+\end{lstlisting}
+
+Observa-se que no segundo turno o agente n\~ao necessita receber
+novamente o contexto do cliente; o \texttt{MemorySaver} recupera o
+estado persistido do \texttt{thread\_id} e o \textit{Claude Sonnet}
+pode referenciar a resposta anterior sem ambiguidade.
+
+\subsection{Passo 4 --- Integrar mem\'oria vetorial FAISS}
+
+Para consultas que exigem recupera\c{c}\~ao sem\^antica\index{recupera\c{c}\~ao sem\^antica|textbf} de documentos
+hist\'oricos --- pol\'iticas, contratos, notas de entrevista ---
+integra-se um \'indice FAISS\index{FAISS}\footnote{%
+  \textit{Facebook AI Similarity Search} (FAISS) \'e uma
+  biblioteca de busca por similaridade de vetores de alta dimens\~ao
+  \cite{johnson2019billion}.} como ferramenta do agente:
+
+\begin{lstlisting}[language=Python,
+  caption={Recupera\c{c}\~ao sem\^antica via FAISS integrada como ferramenta.},
+  label={lst:faiss_tool}]
+from langchain_community.vectorstores import FAISS
+from langchain_aws import BedrockEmbeddings
+
+embeddings = BedrockEmbeddings(
+    model_id="amazon.titan-embed-text-v2:0",
+    region_name="us-east-1"
+)
+indice = FAISS.load_local("faiss_index", embeddings,
+                           allow_dangerous_deserialization=True)
+
+@tool
+def buscar_documentos(consulta: str) -> str:
+    """Busca documentos relevantes no repositorio corporativo.
+    Use quando precisar de politicas, procedimentos ou contratos."""
+    docs = indice.similarity_search(consulta, k=3)
+    return "\n---\n".join(d.page_content for d in docs)
+
+ferramentas.append(buscar_documentos)
+\end{lstlisting}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Invocar o agente com uma pergunta que requer
+        exatamente uma chamada de ferramenta e verificar que o grafo
+        percorre o ciclo \texttt{raciocinar $\to$ ferramentas $\to$
+        raciocinar $\to$ END}.
+  \item \textbf{TC-02:} Verificar que o hist\'orico \'e preservado
+        entre dois turnos consecutivos com o mesmo \texttt{thread\_id}.
+  \item \textbf{TC-03:} Perguntar sobre informa\c{c}\~ao n\~ao
+        disponibilizada em nenhuma ferramenta e verificar que o agente
+        responde com declara\c{c}\~ao de aus\^encia, sem alucina\c{c}\~ao.
+  \item \textbf{TC-04:} Trocar o \texttt{thread\_id} e verificar que
+        o contexto n\~ao vaza entre sess\~oes distintas.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} Medir a lat\^encia de 10 invoca\c{c}\~oes
+        com uma chamada de ferramenta cada; crit\'erio: mediana
+        $\leq 4{,}0$\,s.
+  \item \textbf{TP-02:} Medir o n\'umero de \textit{tokens}
+        acumulados ap\'os 5 turnos consecutivos e verificar
+        que n\~ao ultrapassa 20.000 \textit{tokens} de entrada
+        (janela de contexto controlada).
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} Avaliar 10 pares pergunta--resposta com
+        o LLM-as-Judge (detalhado no Cap\'itulo~\ref{chap:llm_as_judge});
+        crit\'erio: pontua\c{c}\~ao m\'edia de fidelidade $\geq 8{,}0/10$.
+  \item \textbf{TQ-02:} Verificar que o agente n\~ao recorre a
+        ferramentas desnecessariamente em perguntas que podem ser
+        respondidas com o hist\'orico da conversa\c{c}\~ao.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-04 aprovados sem erros bloqueantes.
+  \item TP-01: mediana de lat\^encia $\leq 4{,}0$\,s confirmada
+        (evidenciar com \textit{timestamps} no notebook).
+  \item TQ-01: pontua\c{c}\~ao m\'edia $\geq 8{,}0/10$ em 10
+        perguntas de refer\^encia.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v3.1} --- Substituir o \texttt{MemorySaver} em
+        mem\'oria pelo \texttt{AsyncPostgresSaver}\index{AsyncPostgresSaver|textbf} ---
+        \textit{checkpointer} ass\'incrono baseado em PostgreSQL ---
+        para persist\^encia em produ\c{c}\~ao com m\'ultiplos
+        usu\'arios concorrentes.
+  \item \textbf{v3.2} --- Implementar supervis\~ao hier\'arquica com
+        um agente orquestrador (\textit{supervisor}) que delega
+        subproblemas a agentes especializados (financeiro, jur\'idico,
+        atendimento), conforme o padr\~ao
+        \textit{multi-agent supervisor} do \textit{LangGraph}.
+  \item \textbf{Lacuna} --- Investigar o impacto da ordem das
+        ferramentas no \textit{prompt} sobre a taxa de chamadas
+        incorretas (\textit{hallucinated tool calls}).
+\end{itemize}

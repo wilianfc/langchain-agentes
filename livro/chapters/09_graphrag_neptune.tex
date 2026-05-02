@@ -1,0 +1,203 @@
+\chapter{GraphRAG com Neptune}
+\label{chap:graphrag_neptune}
+
+% ---------------------------------------------------------------
+\section{Escopo do capitulo}
+% ---------------------------------------------------------------
+
+Este capitulo apresenta, em formato de laboratorio, a extensao do RAG para
+contexto em grafo, combinando recuperacao textual com inferencia de relacoes
+multi-hop em Amazon Neptune\index{Neptune (AWS)|textbf}. O objetivo consiste
+em responder perguntas que dependem de conexoes entre entidades (cliente,
+produto, segmento, persona, canal), nao apenas de similaridade textual.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este capitulo, o leitor sera capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Explicar quando RAG textual e insuficiente para consultas relacionais;
+  \item Popular um grafo com entidades e arestas de negocio;
+  \item Consultar contexto relacional com OpenCypher\index{OpenCypher|textbf};
+  \item Combinar contexto de grafo e contexto textual na resposta final do agente.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos teoricos}
+% ---------------------------------------------------------------
+
+\subsection{Do RAG textual ao GraphRAG}
+
+No RAG tradicional, a recuperacao prioriza trechos semanticamente proximos.
+Entretanto, perguntas como ``quais produtos conectam cliente de alto risco a
+segmento de renda media com canal digital?'' exigem travessia de arestas.
+O GraphRAG\index{GraphRAG|textbf} introduz camada relacional para atender
+essas consultas sem perder o contexto documental.
+
+\subsection{Fontes de contexto combinadas}
+
+No pipeline de producao, o worker pode combinar:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{RAG BM25 textual} em OpenSearch;
+  \item \textbf{Snapshot de grafo replicado} em indice sincronizado;
+  \item \textbf{Consulta Neptune live} para relacoes recentes.
+\end{itemize}
+
+Esse desenho reduz latencia media, mas preserva capacidade de consulta
+profunda quando necessario.
+
+% ---------------------------------------------------------------
+\section{Implementacao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Popular o grafo de conhecimento}
+
+Inicialmente, insere-se um conjunto minimo de entidades e relacoes:
+
+\begin{lstlisting}[language=bash,
+  caption={Carga inicial do grafo para o laboratorio.},
+  label={lst:seed_neptune_lab}]
+python popular_neptune.py
+# alternativa em ambiente Lambda/VPC:
+# python seed_neptune_lambda.py
+\end{lstlisting}
+
+Resultado esperado: vertices de clientes, segmentos, personas e produtos,
+com arestas representando afinidade, posse e recomendacao.
+
+\subsection{Passo 2 --- Ingerir documentos para mapeamento textual}
+
+A camada textual continua necessaria para justificativas e detalhes
+descritivos. Portanto, indexa-se material de apoio no OpenSearch:
+
+\begin{lstlisting}[language=bash,
+  caption={Ingestao de documento no pipeline GraphRAG.},
+  label={lst:indexar_documento_graphrag}]
+python indexar_documento.py \
+  --tipo documento \
+  --titulo "Politica de Cross-sell 2026" \
+  --arquivo dados_rag/documentos/politica_investimentos_2026.txt
+\end{lstlisting}
+
+\subsection{Passo 3 --- Executar consulta relacional no Neptune}
+
+Consulta de exemplo em OpenCypher para recuperar produtos associados ao
+segmento de um cliente:
+
+\begin{lstlisting}[language=bash,
+  caption={Consulta OpenCypher de laboratorio.},
+  label={lst:opencypher_lab}]
+MATCH (c:Cliente {cliente_id: "C00042"})-[:PERTENCE_A]->(s:Segmento)
+MATCH (s)-[:RECOMENDA]->(p:Produto)
+RETURN c.cliente_id, s.nome AS segmento, collect(p.nome) AS produtos
+\end{lstlisting}
+
+\subsection{Passo 4 --- Fundir contexto textual e relacional}
+
+No worker, a estrategia de fusao pode ser representada como:
+
+\begin{lstlisting}[language=Python,
+  caption={Composicao simplificada de contexto hibrido.},
+  label={lst:contexto_hibrido}]
+ctx_texto = recuperar_opensearch(pergunta, top_k=4)
+ctx_grafo = consultar_neptune(pergunta, cliente_id)
+
+contexto_final = {
+    "texto": ctx_texto,
+    "grafo": ctx_grafo,
+}
+
+resposta = llm.invoke(prompt_com_contexto(contexto_final, pergunta))
+\end{lstlisting}
+
+\subsection{Passo 5 --- Validar em consulta de negocio}
+
+Apos a fusao, executa-se pergunta multi-hop que dependa de relacoes e
+documentos:
+
+\begin{lstlisting}[language=bash,
+  caption={Consulta final do laboratorio GraphRAG.},
+  label={lst:consulta_final_graphrag}]
+curl -X POST "$API_URL/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modo": "twin",
+    "cliente_id": "C00042",
+    "pergunta": "Quais produtos se conectam ao meu segmento e como justificam essa oferta?",
+    "dados_cliente": {
+      "idade": 35,
+      "renda_mensal": 3200,
+      "saldo_medio": 800,
+      "transacoes_mes": 12,
+      "score_credito": 520,
+      "num_produtos": 2
+    }
+  }'
+\end{lstlisting}
+
+\subsection{Passo 6 --- Resultado completo da aula}
+
+Ao final, o aluno deve comprovar:
+
+\begin{itemize}[leftmargin=*]
+  \item grafo populado com entidades e relacoes auditaveis;
+  \item contexto textual e relacional utilizados de forma complementar;
+  \item resposta final com coerencia de recomendacao e justificativa.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Plano de testes do capitulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} executar carga inicial do grafo e validar contagem
+        minima de vertices e arestas.
+  \item \textbf{TC-02:} rodar consulta OpenCypher de referencia e verificar
+        retorno nao vazio para cliente conhecido.
+  \item \textbf{TC-03:} executar pergunta multi-hop e confirmar resposta com
+        elementos relacionais e textuais.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} p95 de consulta OpenCypher $\leq 400$\,ms em \texttt{dev}.
+  \item \textbf{TP-02:} latencia ponta a ponta com contexto hibrido
+        $\leq 8$\,s em mediana.
+\end{itemize}
+
+\subsection{Teste de qualidade de resposta}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} para 10 perguntas multi-hop, verificar que a
+        resposta menciona relacoes corretas entre entidades.
+  \item \textbf{TQ-02:} avaliar fidelidade com LLM-as-Judge;
+        criterio: media $\geq 8{,}5/10$.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Criterios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-03 aprovados.
+  \item TP-01 e TP-02 dentro dos limites estabelecidos.
+  \item TQ-01 com consistencia relacional em pelo menos 80\% dos casos.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espaco para expansao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v9.1} --- Adicionar estrategia de \textit{path ranking}\index{path ranking}
+        para priorizar trilhas de maior relevancia.
+  \item \textbf{v9.2} --- Incluir explicacoes citaveis por aresta para auditoria.
+  \item \textbf{Lacuna} --- Avaliar impacto de replicacao Neptune$\to$OpenSearch
+        na frescura de dados em cenarios de alta mutacao.
+\end{itemize}

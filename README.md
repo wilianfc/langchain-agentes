@@ -9,6 +9,8 @@
 > 
 > 📖 [Guia completo de migração assíncrona](MIGRATION_ASYNC.md)
 
+> 🖥️ **Console web**: `https://djxkmivr2akfz.cloudfront.net` — interface de operação publicada via CloudFront + S3. Ao atingir `COMPLETED`, a resposta legível do agente é exibida no painel **Resposta** via `result.resposta` (campo extraído do objeto retornado pela API, não o objeto JSON bruto). Corrigido em 02/05/2026.
+
 Notebook didático cobrindo os principais conceitos de construção de agentes inteligentes com LangChain e LangGraph, do básico ao uso de MCP (Model Context Protocol) para integração com bancos de dados.
 
 ## Pré-requisitos
@@ -151,7 +153,7 @@ retriever.as_retriever()        ← interface de recuperação
 @tool buscar_conhecimento()     ← expõe o retriever como ferramenta do agente
 ```
 
-> **Em produção (AWS):** o FAISS local é substituído por **OpenSearch Service** (BM25 text search) e os embeddings HuggingFace por **Bedrock Titan Embeddings v2** (indexação local). Grafo de conhecimento via **Amazon Neptune** com retrieval OpenCypher. Ver [Parte 8 — RAG em produção](#parte-8--arquitetura-assíncrona-de-produção-aws) e [Parte 9 — GraphRAG com Neptune](#parte-9--graphrag-com-amazon-neptune).
+> **Em produção (AWS):** o FAISS local é substituído por **OpenSearch Service** (BM25 text search + índice `neptune-graph-sync` replicado do grafo) e os embeddings HuggingFace por **Bedrock Titan Embeddings v2**. Grafo de conhecimento via **Amazon Neptune** com retrieval OpenCypher multi-hop. O Worker combina 3 fontes de contexto: RAG BM25 (OpenSearch), snapshot do grafo replicado e Neptune live. Ver [Parte 8 — Arquitetura assíncrona](#parte-8--arquitetura-assíncrona-de-produção-aws) e [Parte 9 — GraphRAG com Neptune](#parte-9--graphrag-com-amazon-neptune).
 
 #### Import correto do text splitter
 

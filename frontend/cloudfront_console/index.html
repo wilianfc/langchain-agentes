@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Console RAG Bancário</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">CloudFront + API Gateway + RAG</p>
+        <h1>Console Web para interação com a API e ingestão de documentos</h1>
+        <p class="hero-copy">
+          Interface única para consultar o agente bancário, acompanhar requisições assíncronas
+          e enviar documentos textuais para indexação no pipeline RAG.
+        </p>
+      </div>
+      <div class="hero-card">
+        <div class="metric-label">Endpoint configurado</div>
+        <div id="api-endpoint" class="metric-value">carregando...</div>
+        <div class="metric-note">O endpoint é injetado pelo deploy da distribuição CloudFront.</div>
+      </div>
+    </header>
+
+    <main class="layout-grid">
+      <section class="panel panel-chat">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Consulta assíncrona</p>
+            <h2>Interagir com a API</h2>
+          </div>
+          <span id="query-badge" class="status-badge idle">Pronto</span>
+        </div>
+
+        <form id="query-form" class="stack-form">
+          <div class="grid-two">
+            <label>
+              <span>Modo</span>
+              <select id="modo" name="modo">
+                <option value="segmento">segmento</option>
+                <option value="persona">persona</option>
+                <option value="twin">twin</option>
+              </select>
+            </label>
+            <label>
+              <span>Cliente ID</span>
+              <input id="cliente_id" name="cliente_id" type="text" placeholder="C00042">
+            </label>
+          </div>
+
+          <div class="grid-two">
+            <label>
+              <span>Cluster ID</span>
+              <input id="cluster_id" name="cluster_id" type="number" min="0" max="3" placeholder="1">
+            </label>
+            <label>
+              <span>Pergunta</span>
+              <input id="pergunta" name="pergunta" type="text" placeholder="Que oferta faz sentido para este cliente?" required>
+            </label>
+          </div>
+
+          <fieldset>
+            <legend>Dados do cliente</legend>
+            <div class="grid-three">
+              <label><span>Idade</span><input id="idade" type="number" min="18" max="100" placeholder="35"></label>
+              <label><span>Renda mensal</span><input id="renda_mensal" type="number" min="0" step="0.01" placeholder="3200"></label>
+              <label><span>Saldo médio</span><input id="saldo_medio" type="number" min="0" step="0.01" placeholder="800"></label>
+              <label><span>Transações/mês</span><input id="transacoes_mes" type="number" min="0" placeholder="12"></label>
+              <label><span>Score crédito</span><input id="score_credito" type="number" min="0" max="1000" placeholder="520"></label>
+              <label><span>Nº produtos</span><input id="num_produtos" type="number" min="0" placeholder="2"></label>
+            </div>
+            <div class="grid-two toggle-row">
+              <label class="checkbox"><input id="canal_digital" type="checkbox"><span>Canal digital</span></label>
+              <label class="checkbox"><input id="inadimplente" type="checkbox"><span>Inadimplente</span></label>
+            </div>
+          </fieldset>
+
+          <div class="action-row">
+            <button type="submit">Enviar consulta</button>
+            <button type="button" id="fill-sample" class="secondary">Preencher exemplo</button>
+          </div>
+        </form>
+
+        <div class="response-grid">
+          <article class="response-card">
+            <h3>Status</h3>
+            <pre id="query-status">Aguardando envio...</pre>
+          </article>
+          <article class="response-card response-result">
+            <h3>Resposta</h3>
+            <pre id="query-result">Nenhum resultado ainda.</pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel-upload">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Ingestão RAG</p>
+            <h2>Enviar documentos</h2>
+          </div>
+          <span id="upload-badge" class="status-badge idle">Pronto</span>
+        </div>
+
+        <form id="upload-form" class="stack-form">
+          <div class="grid-two">
+            <label>
+              <span>Tipo</span>
+              <select id="tipo_documento" name="tipo_documento">
+                <option value="documento">documento</option>
+                <option value="entrevista">entrevista</option>
+              </select>
+            </label>
+            <label>
+              <span>Título</span>
+              <input id="titulo_documento" name="titulo_documento" type="text" placeholder="Política de Investimentos 2026" required>
+            </label>
+          </div>
+
+          <div class="grid-two">
+            <label>
+              <span>Cliente ID</span>
+              <input id="upload_cliente_id" type="text" placeholder="Opcional para entrevista individual">
+            </label>
+            <label>
+              <span>Cluster ID</span>
+              <input id="upload_cluster_id" type="number" min="0" max="3" placeholder="Opcional para entrevista de segmento">
+            </label>
+          </div>
+
+          <label class="file-dropzone">
+            <input id="arquivo_documento" type="file" accept=".txt,.md,.json,.csv,.html,.log,text/plain,application/json,text/markdown">
+            <span>Selecionar arquivo textual ou arrastar para esta área</span>
+            <small>Arquivos binários como PDF e DOCX ainda exigem etapa adicional de extração no backend.</small>
+          </label>
+
+          <label>
+            <span>Conteúdo</span>
+            <textarea id="texto_documento" rows="12" placeholder="Cole aqui o conteúdo textual do documento a ser indexado..."></textarea>
+          </label>
+
+          <div class="action-row">
+            <button type="submit">Indexar no RAG</button>
+            <button type="button" id="fill-document" class="secondary">Exemplo de documento</button>
+          </div>
+        </form>
+
+        <article class="response-card full-width">
+          <h3>Resultado da ingestão</h3>
+          <pre id="upload-result">Nenhuma indexação executada.</pre>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

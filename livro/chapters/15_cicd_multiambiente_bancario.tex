@@ -1,0 +1,321 @@
+\chapter{Esteiras de CI/CD Multi-Ambiente para Produtos AWS Banc\'arios}
+\label{chap:cicd_multiambiente_bancario}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+Este cap\'itulo descreve a organiza\c{c}\~ao e a opera\c{c}\~ao das
+esteiras de integra\c{c}\~ao cont\'inua\index{integração contínua|textbf}\index{CI/CD|textbf} e entrega cont\'inua
+(\textit{Continuous Integration/Continuous Delivery} --- CI/CD) adotadas
+nos produtos AWS\index{AWS} do projeto bancário. A estratégia baseia-se em
+tr\^es ambientes isolados --- \texttt{dev}\index{dev (ambiente)|textbf},
+\texttt{homol}\index{homol (ambiente)|textbf} e \texttt{prod}\index{prod (ambiente)|textbf} ---
+cada qual mapeado para uma conta AWS\index{conta AWS separada} independente,
+garantindo isolamento de recursos, permiss\~oes e dados entre est\'agios do
+ciclo de vida do software. A infraestrutura de cada produto \'e integralmente
+descrita em m\'odulos \textit{Terraform}\index{Terraform} versionados, e os
+fluxos de automa\c{c}\~ao s\~ao implementados como
+\textit{Git Workflows}\index{Git Workflow|textbf}\index{GitHub Actions|textbf}
+(\textit{GitHub Actions} ou \textit{GitLab CI}\index{GitLab CI}).
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Compreender a arquitetura de tr\^es ambientes AWS separados e
+        as implica\c{c}\~oes de isolamento de conta para sistemas banc\'arios;
+  \item Estruturar esteiras de CI/CD independentes por produto AWS,
+        com est\'agios de build, valida\c{c}\~ao, homologa\c{c}\~ao e
+        produ\c{c}\~ao claramente definidos;
+  \item Configurar \textit{workspaces} Terraform\index{Terraform!workspace|textbf}
+        mapeados a ambientes e \textit{state backends}\index{state backend|textbf}
+        segregados por conta;
+  \item Implementar controles de promo\c{c}\~ao entre ambientes com
+        aprova\c{c}\~ao humana obrigat\'oria antes de \texttt{homol}
+        e \texttt{prod}.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Isolamento de contas AWS por ambiente}
+
+O modelo de tr\^es contas AWS separadas --- uma por ambiente ---
+constitui pr\'atica recomendada pelo \textit{AWS Well-Architected
+Framework}\index{AWS Well-Architected Framework} para sistemas
+financeiros regulados. O isolamento por conta oferece:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Blast radius controlado:} falhas, vazamentos de
+        credenciais ou configura\c{c}\~oes equivocadas em
+        \texttt{dev} n\~ao afetam \texttt{prod};
+  \item \textbf{Pol\'iticas IAM\index{IAM} independentes:} cada conta
+        define seus pr\'oprios limites de permiss\~ao sem interfer\^encia
+        cruzada;
+  \item \textbf{Segregação de dados:} dados reais de clientes presentes
+        apenas em \texttt{prod}; \texttt{dev} e \texttt{homol} operam
+        exclusivamente com dados sint\'eticos ou anonimizados.
+\end{itemize}
+
+O fluxo de promo\c{c}\~ao entre ambientes \'e descrito na subse\c{c}\~ao seguinte.
+
+\subsection{Esteira por produto}
+
+Cada produto AWS --- Lambda\index{Lambda (AWS)}, API Gateway\index{API Gateway},
+DynamoDB\index{DynamoDB}, SQS\index{SQS}, OpenSearch\index{OpenSearch},
+Neptune\index{Neptune (AWS)} --- mant\'em seu pr\'oprio reposit\'orio Git
+com conjunto de arquivos de \textit{workflow} independente. Essa separação
+previne acoplamento entre produtos e permite que equipes distintas evoluam
+cadências de deploy sem bloquear umas às outras.
+
+\subsection{Fluxo de promoção entre ambientes}
+
+O ciclo de promo\c{c}\~ao segue o padr\~ao:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Feature branch $\to$ \texttt{dev}:} merge disparado por
+        \textit{pull request}\index{pull request} aprovado; pipeline executa
+        lint, testes unit\'arios e \texttt{terraform plan}.
+  \item \textbf{\texttt{dev} $\to$ \texttt{homol}:} merge na branch
+        \texttt{main}; exige aprova\c{c}\~ao do respons\'avel de QA e
+        pipeline verde.
+  \item \textbf{\texttt{homol} $\to$ \texttt{prod}:} \textit{tag} de
+        release sem\'antica\index{versionamento semântico|textbf}
+        (\texttt{vMAJOR.MINOR.PATCH}); exige aprova\c{c}\~ao de dois
+        revisores autorizados e janela de manuten\c{c}\~ao registrada.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Estrutura de reposit\'orio por produto}
+
+A organiza\c{c}\~ao recomendada para o reposit\'orio de um produto AWS \'e:
+
+\begin{lstlisting}[language=bash,
+  caption={Estrutura de reposit\'orio de produto AWS banc\'ario.},
+  label={lst:repo_estrutura}]
+produto-lambda-segmentacao/
+  .github/
+    workflows/
+      ci.yml          # lint, testes, plan -- toda PR
+      deploy-dev.yml  # deploy automatico em dev
+      deploy-homol.yml# deploy com aprovacao QA
+      deploy-prod.yml # deploy com aprovacao dupla + tag
+  infraestrutura/
+    main.tf
+    variables.tf
+    outputs.tf
+    backend.tf        # configuracao S3 + DynamoDB lock
+    envs/
+      dev.tfvars
+      homol.tfvars
+      prod.tfvars     # sem segredos -- apenas referencias
+  src/
+    lambda_handler.py
+    tests/
+      test_unit.py
+      test_integration.py
+  requirements.txt
+  requirements-dev.txt
+\end{lstlisting}
+
+\subsection{Passo 2 --- Configurar \textit{backend} Terraform por ambiente}
+
+Cada ambiente utiliza um \textit{bucket} S3\index{S3 (AWS)} e uma tabela
+DynamoDB dedicados para armazenar e bloquear o \textit{state}:
+
+\begin{lstlisting}[language=bash,
+  caption={Backend Terraform com lock por conta AWS.},
+  label={lst:terraform_backend}]
+# backend.tf
+terraform {
+  backend "s3" {
+    bucket         = "tfstate-${var.ambiente}-123456789"
+    key            = "produto-lambda-segmentacao/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "tfstate-lock-${var.ambiente}"
+    encrypt        = true
+  }
+}
+\end{lstlisting}
+
+O par\^ametro \texttt{encrypt = true} garante criptografia do
+\textit{state file}\index{state file (Terraform)|textbf} em repouso,
+exig\^encia obrigat\'oria para reposit\'orios banc\'arios que possam
+conter ARNs, IDs de recursos ou refer\^encias a segredos.
+
+\subsection{Passo 3 --- Workflow de CI (pull request)}
+
+O workflow de CI \'e disparado em toda \textit{pull request} aberta
+contra qualquer branch protegida:
+
+\begin{lstlisting}[language=bash,
+  caption={GitHub Actions: workflow de CI para produto AWS.},
+  label={lst:ci_workflow}]
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (flake8 + black)
+        run: |
+          flake8 src/ --max-line-length=100
+          black --check src/
+
+      - name: Testes unitarios
+        run: pytest src/tests/test_unit.py --cov=src --cov-fail-under=70
+
+      - name: Seguranca estatica (bandit)
+        run: bandit -r src/ -ll
+
+      - name: Terraform validate
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+      - run: |
+          cd infraestrutura
+          terraform init -backend=false
+          terraform fmt -check -recursive
+          terraform validate
+\end{lstlisting}
+
+\subsection{Passo 4 --- Workflow de deploy com promo\c{c}\~ao controlada}
+
+O deploy em \texttt{homol} e \texttt{prod} utiliza o mecanismo de
+\textit{environment protection rules}\index{environment protection rules}
+do GitHub Actions, que bloqueia a execu\c{c}\~ao at\'e que revisores
+autorizados aprovem:
+
+\begin{lstlisting}[language=bash,
+  caption={GitHub Actions: deploy em homol com aprovacao.},
+  label={lst:deploy_homol}]
+# .github/workflows/deploy-homol.yml
+name: Deploy Homol
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: homologacao   # protection rule: 1 aprovador QA
+    permissions:
+      id-token: write          # OIDC para assume role sem chave estatica
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::HOMOL_ACCOUNT_ID:role/GitHubActionsRole
+          aws-region: us-east-1
+
+      - name: Terraform apply (homol)
+        run: |
+          cd infraestrutura
+          terraform init
+          terraform workspace select homol
+          terraform apply -var-file=envs/homol.tfvars -auto-approve
+\end{lstlisting}
+
+A autentica\c{c}\~ao via \textit{OIDC}\index{OIDC|textbf}\index{OpenID Connect|see{OIDC}}
+(\textit{OpenID Connect}) elimina a necessidade de chaves de acesso
+est\'aticas (\texttt{AWS\_ACCESS\_KEY\_ID} / \texttt{AWS\_SECRET\_ACCESS\_KEY})
+armazenadas como \textit{secrets} do reposit\'orio, reduzindo
+significativamente a superf\'icie de ataque\index{superfície de ataque}.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Abrir uma PR de feature, introduzir um erro de
+        lint intencional e verificar que o job \texttt{quality} falha
+        antes do deploy.
+  \item \textbf{TC-02:} Fazer merge na branch \texttt{main} sem
+        aprova\c{c}\~ao do QA e verificar que o job \texttt{deploy-homol}
+        fica bloqueado aguardando aprova\c{c}\~ao.
+  \item \textbf{TC-03:} Criar uma tag \texttt{v1.0.0} sem os dois
+        revisores autorizados e verificar que o deploy em \texttt{prod}
+        n\~ao prossegue.
+\end{itemize}
+
+\subsection{Teste de desempenho}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TP-01:} Medir o tempo total da pipeline de CI (checkout
+        a valida\c{c}\~ao Terraform); crit\'erio: $\leq 8$\,min.
+  \item \textbf{TP-02:} Medir o tempo de \texttt{terraform apply} em
+        \texttt{homol} para o produto Lambda de segmenta\c{c}\~ao;
+        crit\'erio: $\leq 5$\,min.
+\end{itemize}
+
+\subsection{Teste de qualidade}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TQ-01:} Executar \texttt{checkov} contra os m\'odulos
+        Terraform e verificar zero falhas de n\'ivel CRITICAL.
+  \item \textbf{TQ-02:} Validar que o \textit{state file} de
+        \texttt{prod} est\'a criptografado e o acesso ao bucket S3
+        \'e restrito apenas \`a role de CI/CD.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-03 aprovados sem interven\c{c}\~ao manual.
+  \item TP-01: pipeline de CI $\leq 8$\,min evidenciada com
+        \textit{timestamps} do GitHub Actions.
+  \item TQ-01: zero falhas CRITICAL no \texttt{checkov}.
+  \item Nenhuma chave de acesso est\'atica AWS presente nos
+        \textit{secrets} do reposit\'orio; autentica\c{c}\~ao
+        exclusivamente via OIDC.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v15.1} --- Implementar \textit{drift detection}\index{drift detection}:
+        job agendado que executa \texttt{terraform plan} diariamente em
+        \texttt{prod} e alerta via SNS\index{SNS (AWS)} caso detecte desvio
+        entre o \textit{state} e a infraestrutura real.
+  \item \textbf{v15.2} --- Adotar \textit{GitOps}\index{GitOps} com
+        \textit{ArgoCD} ou \textit{Flux} para sincroniza\c{c}\~ao
+        declarativa de manifests Kubernetes, se a plataforma evoluir
+        para EKS\index{EKS (AWS)}.
+  \item \textbf{Lacuna} --- Investigar o impacto de \textit{feature flags}
+        no ciclo de promo\c{c}\~ao, permitindo ativar funcionalidades
+        seletivamente por conta AWS sem novo deploy.
+\end{itemize}

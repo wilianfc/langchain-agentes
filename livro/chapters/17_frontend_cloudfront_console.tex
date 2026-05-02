@@ -1,0 +1,303 @@
+\chapter{Frontend Web com CloudFront para Operação da API e Ingestão RAG}
+\label{chap:frontend_cloudfront_console}
+
+% ---------------------------------------------------------------
+\section{Escopo do cap\'itulo}
+% ---------------------------------------------------------------
+
+Este cap\'itulo apresenta a camada de experi\^encia do usu\'ario da
+plataforma: uma interface web est\'atica distribu\'ida por
+\textit{Amazon CloudFront}\index{CloudFront|textbf}\footnote{%
+  Rede de distribui\c{c}\~ao de conte\'udo (CDN) da AWS utilizada para
+  publicar arquivos est\'aticos com baixa lat\^encia e alta disponibilidade.}
+com origem em bucket \textit{Amazon S3}\index{S3 (AWS)} privado,
+destinada a dois fluxos principais: intera\c{c}\~ao com a API ass\'incrona
+via \texttt{POST /query} e \texttt{GET /status/\{request\_id\}} e ingest\~ao
+controlada de documentos no pipeline \textit{Retrieval-Augmented Generation}
+(RAG\index{RAG|textbf}) via \texttt{POST /documentos}. O objetivo \'e
+fornecer uma superf\'icie web de opera\c{c}\~ao que possa ser utilizada por
+usu\'arios de neg\'ocio, analistas de homologa\c{c}\~ao e equipes t\'ecnicas sem
+necessidade de notebooks ou scripts auxiliares.
+
+% ---------------------------------------------------------------
+\section{Objetivos de aprendizagem}
+% ---------------------------------------------------------------
+
+Ao concluir este cap\'itulo, o leitor ser\'a capaz de:
+
+\begin{itemize}[leftmargin=*]
+  \item Descrever a arquitetura de publica\c{c}\~ao de um frontend
+        est\'atico via CloudFront e bucket S3 privado com
+        \textit{Origin Access Control}\index{Origin Access Control|textbf};
+  \item Implementar uma interface web para envio de consultas ao agente
+        e acompanhamento do processamento ass\'incrono;
+  \item Disponibilizar, na mesma interface, um fluxo de envio de
+        documentos textuais para indexa\c{c}\~ao no RAG;
+  \item Avaliar limita\c{c}\~oes do backend atual para formatos bin\'arios
+        como PDF e DOCX e propor a extens\~ao arquitetural adequada.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Conceitos te\'oricos}
+% ---------------------------------------------------------------
+
+\subsection{Frontend est\'atico como superf\'icie de opera\c{c}\~ao}
+
+Em arquiteturas banc\'arias modernas, a separa\c{c}\~ao entre camada de
+apresenta\c{c}\~ao e servi\c{c}os de neg\'ocio reduz acoplamento, melhora a
+escalabilidade e simplifica a estrat\'egia de publica\c{c}\~ao. Para o caso
+em estudo, um frontend est\'atico atende adequadamente aos requisitos
+porque:
+
+\begin{itemize}[leftmargin=*]
+  \item o processamento de neg\'ocio ocorre integralmente no backend
+        ass\'incrono (API Gateway + Lambda + SQS + DynamoDB);
+  \item a UI atua apenas como orquestradora de chamadas HTTP,
+        renderiza\c{c}\~ao de respostas e coleta de insumos do usu\'ario;
+  \item a camada est\'atica pode ser publicada sem servidor dedicado,
+        com custo operacional reduzido e baixa superf\'icie de ataque.
+\end{itemize}
+
+\subsection{CloudFront + S3 privado}
+
+A distribui\c{c}\~ao CloudFront \'e configurada para apontar para um bucket
+S3 privado que armazena os arquivos \texttt{index.html}, \texttt{styles.css},
+\texttt{app.js} e \texttt{config.js}. O acesso direto ao bucket permanece
+bloqueado; apenas a distribui\c{c}\~ao CloudFront, por meio de
+\textit{Origin Access Control} (OAC), possui permiss\~ao de leitura.
+Esse padr\~ao \'e prefer\'ivel ao uso de \textit{website endpoint}
+p\'ublico do S3, pois preserva o princ\'ipio de exposi\c{c}\~ao m\'inima e
+centraliza a entrega HTTPS.
+
+\subsection{Chat ass\'incrono e ingest\~ao RAG em uma \~unica UI}
+
+A interface implementa dois fluxos distintos:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Consulta ass\'incrona:} o usu\'ario preenche pergunta,
+        modo de opera\c{c}\~ao e, opcionalmente, dados do cliente; a UI
+        envia o payload para \texttt{/query}, recebe um
+        \texttt{request\_id}\index{request\_id} e executa \textit{polling}
+        em \texttt{/status/\{request\_id\}} at\'e o estado \texttt{COMPLETED}.
+  \item \textbf{Ingest\~ao de documentos:} o usu\'ario informa o tipo
+        (\texttt{documento} ou \texttt{entrevista}), t\'itulo e conte\'udo,
+        podendo carregar um arquivo textual local. O frontend converte o
+        arquivo em texto e envia JSON para \texttt{/documentos}.
+\end{enumerate}
+
+A limita\c{c}\~ao atual decorre do contrato do endpoint \texttt{/documentos},
+que aceita apenas JSON com campo \texttt{texto}; n\~ao h\'a suporte nativo a
+\textit{multipart/form-data}, nem extra\c{c}\~ao de conte\'udo de formatos
+bin\'arios como PDF. Assim, a UI suporta apenas arquivos textuais e colagem
+manual de conte\'udo.
+
+% ---------------------------------------------------------------
+\section{Implementa\c{c}\~ao orientada por passos}
+% ---------------------------------------------------------------
+
+\subsection{Passo 1 --- Estruturar os assets do frontend}
+
+A aplica\c{c}\~ao web foi implementada sem \textit{framework} JavaScript,
+com o objetivo de minimizar depend\^encias e facilitar a publica\c{c}\~ao:
+
+\begin{lstlisting}[language=bash,
+  caption={Estrutura dos arquivos est\'aticos do console web.},
+  label={lst:frontend_assets}]
+frontend/
+  cloudfront_console/
+    index.html
+    styles.css
+    app.js
+    config.js
+\end{lstlisting}
+
+O arquivo \texttt{config.js}\index{config.js|textbf} \'e sobrescrito no deploy
+Terraform com a URL real da API Gateway, eliminando a necessidade de
+compila\c{c}\~ao por ambiente.
+
+\subsection{Passo 2 --- Publicar a UI em CloudFront}
+
+O m\'odulo Terraform \texttt{cloudfront\_frontend} cria:
+
+\begin{itemize}[leftmargin=*]
+  \item bucket S3 privado com versionamento e criptografia;
+  \item OAC para leitura segura do bucket pela distribui\c{c}\~ao;
+  \item distribui\c{c}\~ao CloudFront com \texttt{default\_root\_object = index.html};
+  \item objetos S3 contendo os assets do frontend e o \texttt{config.js}
+        parametrizado.
+\end{itemize}
+
+\begin{lstlisting}[language=bash,
+  caption={Trecho do m\'odulo Terraform do frontend CloudFront.},
+  label={lst:terraform_cloudfront_frontend}]
+module "cloudfront_frontend" {
+  source       = "./modules/cloudfront_frontend"
+  project_name = var.project_name
+  environment  = var.environment
+  api_endpoint = module.api_gateway.api_endpoint
+}
+
+output "frontend_url" {
+  value = "https://${module.cloudfront_frontend.distribution_domain_name}"
+}
+\end{lstlisting}
+
+\subsection{Passo 3 --- Implementar o fluxo de consulta ass\'incrona}
+
+A interface web coleta pergunta, modo e dados do cliente e monta o payload
+compat\'ivel com o contrato OpenAPI da aplica\c{c}\~ao. Em seguida:
+
+\begin{enumerate}[leftmargin=*]
+  \item envia \texttt{POST /query};
+  \item armazena o \texttt{request\_id};
+  \item inicia \textit{polling} com \textit{backoff} exponencial;
+  \item atualiza a UI com status intermedi\'arios e resultado final.
+\end{enumerate}
+
+Esse padr\~ao desacopla a experi\^encia do usu\'ario da dura\c{c}\~ao real do
+pipeline RAG, compatibilizando a interface web com o limite de 29 segundos
+do API Gateway descrito no Cap\'itulo~\ref{chap:pipeline_assincrono_aws}.
+
+\subsection{Passo 4 --- Implementar envio de documentos para RAG}
+
+O fluxo de ingest\~ao aceita dois modos de entrada:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Upload de arquivo textual:} a UI l\^e o arquivo no navegador
+        com \texttt{File.text()} e preenche o campo \texttt{texto};
+  \item \textbf{Colagem manual:} o usu\'ario insere diretamente o conte\'udo
+        no \textit{textarea}, permitindo testes e indexa\c{c}\~ao r\'apida.
+\end{itemize}
+
+O payload enviado para a API segue o formato:
+
+\begin{lstlisting}[language=bash,
+  caption={Payload de ingest\~ao de documento no RAG.},
+  label={lst:payload_documento_rag}]
+{
+  "tipo": "documento",
+  "titulo": "Politica de Investimentos 2026",
+  "texto": "Clientes conservadores priorizam liquidez..."
+}
+\end{lstlisting}
+
+Quando o tipo \'e \texttt{entrevista}, a UI pode enviar adicionalmente
+\texttt{cliente\_id} ou \texttt{cluster\_id}, alinhando a indexa\c{c}\~ao com
+os modos \textit{twin}, \textit{persona} e \textit{segmento}.
+
+\subsection{Passo 5 --- Planejar evolu\c{c}\~ao para PDF e DOCX}
+
+Para suportar documentos bin\'arios, recomenda-se introduzir uma etapa de
+extra\c{c}\~ao antes da chamada a \texttt{/documentos}. Duas abordagens s\~ao
+plaus\'iveis:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Extra\c{c}\~ao no backend:} novo endpoint de upload recebe o
+        bin\'ario, armazena em S3 e aciona Lambda com parser (Apache Tika,
+        PyMuPDF, python-docx ou Amazon Textract\index{Textract|textbf}).
+  \item \textbf{Pr\'e-processamento cliente:} alternativa limitada a alguns
+        formatos e menos indicada para ambiente banc\'ario, pois exp\~oe a
+        extra\c{c}\~ao ao navegador.
+\end{enumerate}
+
+Para o cen\'ario banc\'ario, a primeira abordagem \'e superior por motivos
+de rastreabilidade, auditoria e controle de seguran\c{c}a.
+
+% ---------------------------------------------------------------
+\section{Plano de testes do cap\'itulo}
+% ---------------------------------------------------------------
+
+\subsection{Teste funcional}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TC-01:} Abrir a URL do CloudFront e verificar o
+        carregamento de \texttt{index.html}, \texttt{styles.css} e
+        \texttt{config.js} sem acesso direto p\'ublico ao bucket S3.
+  \item \textbf{TC-02:} Executar uma consulta em modo \texttt{segmento}
+        e verificar que a UI exibe \texttt{request\_id}, status intermedi\'ario
+        e resposta final.
+  \item \textbf{TC-03:} Submeter um documento textual e verificar resposta
+        HTTP 200 com \texttt{chunks\_indexados > 0}.
+  \item \textbf{TC-04:} Tentar enviar um arquivo PDF e verificar que a UI
+        informa explicitamente a limita\c{c}\~ao atual do backend.
+\end{itemize}
+
+\subsection{Teste de valida\c{c}\~ao em produ\c{c}\~ao (AWS)}
+
+Foi executado um smoke test completo no ambiente publicado, com os
+seguintes endere\c{c}os:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Frontend CloudFront:}
+        \texttt{https://djxkmivr2akfz.cloudfront.net};
+  \item \textbf{API Gateway:}
+        \texttt{https://3vqrahlmyg.execute-api.sa-east-1.amazonaws.com}.
+\end{itemize}
+
+Os resultados observados foram:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TVP-01 (ingest\~ao entrevista):}
+        \texttt{ok=true}, \texttt{chunks\_indexados=1};
+  \item \textbf{TVP-02 (consulta persona):}
+        \texttt{request\_id}: \nolinkurl{ddbc5210-63fc-47bc-a274-283e60be84bc}. \par
+        Estado final \texttt{COMPLETED};
+  \item \textbf{TVP-03 (consulta twin):}
+        \texttt{request\_id}: \nolinkurl{e5e348e7-d266-4ae9-9f26-eb0e659a56a7}. \par
+        Estado final \texttt{COMPLETED};
+  \item \textbf{TVP-04 (corre\c{c}\~ao de exibi\c{c}\~ao da resposta):}
+        Identificado e corrigido defeito no \texttt{app.js} em que o campo
+        \texttt{data.result} era exibido diretamente como texto, resultando
+        em \texttt{[object Object]}. A corre\c{c}\~ao extrai
+        \texttt{result.resposta} ap\'os \textit{parse} JSON, exibindo o
+        texto leg\'ivel do agente no painel \textbf{Resposta} e os metadados
+        (\texttt{cliente\_id}, \texttt{cluster\_id}, \texttt{confiabilidade})
+        no painel \textbf{Status}. Implantado em produ\c{c}\~ao via
+        \texttt{aws s3 sync} e invalida\c{c}\~ao do cache CloudFront em
+        02/05/2026.
+\end{itemize}
+
+Com isso, verifica-se a opera\c{c}\~ao ponta a ponta da interface web em
+produ\c{c}\~ao, incluindo ingest\~ao RAG e consulta ass\'incrona com
+\textit{polling} at\'e a conclus\~ao.
+
+\subsection{Teste de seguran\c{c}a}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TS-01:} Confirmar que o bucket S3 do frontend possui
+        \textit{public access block} habilitado.
+  \item \textbf{TS-02:} Verificar que apenas a distribui\c{c}\~ao CloudFront
+        possui permiss\~ao de leitura nos objetos est\'aticos.
+  \item \textbf{TS-03:} Validar cabe\c{c}alhos CORS da API para
+        permitir consumo pelo frontend, sem abrir al\'em do necess\'ario.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Crit\'erios de aceite}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item TC-01 a TC-04 aprovados.
+  \item TS-01 a TS-03 aprovados.
+  \item URL \texttt{frontend\_url} gerada pelo Terraform e acess\'ivel via HTTPS.
+  \item Fluxos de consulta e ingest\~ao operacionais em \texttt{dev}.
+  \item Smoke test em produ\c{c}\~ao aprovado para ingest\~ao,
+        \texttt{persona} e \texttt{twin} (TVP-01 a TVP-03).
+  \item Resposta leg\'ivel do agente exibida no painel \textbf{Resposta}
+        via \texttt{result.resposta} (TVP-04 --- defei\-to de exibi\c{c}\~ao corrigido).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Espa\c{c}o para expans\~ao iterativa}
+% ---------------------------------------------------------------
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{v17.1} --- Integrar autentica\c{c}\~ao com Amazon Cognito
+        \index{Cognito|textbf} para restringir o acesso \`a interface web.
+  \item \textbf{v17.2} --- Adicionar hist\'orico de consultas e visualiza\c{c}\~ao
+        de status por usu\'ario autenticado.
+  \item \textbf{v17.3} --- Suportar upload bin\'ario com pipeline de extra\c{c}\~ao
+        para PDF, DOCX e imagens escaneadas.
+  \item \textbf{Lacuna} --- Avaliar \textit{WebSocket API} como alternativa
+        ao \textit{polling} HTTP para feedback de progresso em tempo real.
+\end{itemize}

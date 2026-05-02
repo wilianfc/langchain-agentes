@@ -1,0 +1,134 @@
+\chapter{Glossário Matemático e Técnico}
+\label{apendice:glossario_matematico}
+
+Este apêndice reúne definições formais dos principais termos matemáticos,
+estatísticos e de aprendizado de máquina empregados ao longo do livro.
+Cada entrada inclui notação, descrição e, quando pertinente, referência
+bibliográfica. Os termos aparecem em ordem alfabética.
+
+% ---------------------------------------------------------------
+\section*{B}
+% ---------------------------------------------------------------
+
+\subsection*{Byte-Pair Encoding (BPE)}
+\label{sec:bpe}
+\index{Byte-Pair Encoding|textbf}
+
+O \textit{Byte-Pair Encoding} (BPE) é um algoritmo de tokenização por
+sub-palavras originalmente proposto para compressão de dados e posteriormente
+adaptado ao processamento de linguagem natural. O procedimento inicia com um
+vocabulário de caracteres individuais e, iterativamente, funde o par de
+símbolos adjacentes de maior frequência no corpus de treinamento, criando um
+novo símbolo composto. Após $k$ fusões, obtém-se um vocabulário de tamanho
+$|\mathcal{V}| = |\mathcal{V}_0| + k$, em que $\mathcal{V}_0$ é o vocabulário
+inicial de caracteres.
+
+\begin{enumerate}
+  \item Inicializar $\mathcal{V}$ com todos os caracteres únicos do corpus.
+  \item Contar a frequência de todos os pares de símbolos adjacentes.
+  \item Fundir o par mais frequente $(a, b)$ em um novo símbolo $ab$.
+  \item Repetir os passos 2–3 até atingir $|\mathcal{V}|$ desejado.
+\end{enumerate}
+
+O BPE oferece equilíbrio entre vocabulários de caracteres (sem palavras
+desconhecidas, mas sequências longas) e vocabulários de palavras inteiras
+(sequências curtas, mas alta taxa de \textit{out-of-vocabulary}).
+
+% ---------------------------------------------------------------
+\section*{E}
+% ---------------------------------------------------------------
+
+\subsection*{Embedding (vetor de representação)}
+\label{sec:embedding}
+\index{embedding|textbf}
+
+Um \textit{embedding} é uma função $f: \mathcal{X} \to \mathbb{R}^d$ que
+mapeia elementos de um espaço discreto (tokens, frases, documentos) para
+vetores densos em $\mathbb{R}^d$. No contexto de LLMs, a camada de
+\textit{embedding} de entrada $\mathbf{E} \in \mathbb{R}^{|\mathcal{V}| \times d}$
+associa cada token $t \in \mathcal{V}$ a um vetor $\mathbf{e}_t \in \mathbb{R}^d$.
+A dimensão $d$ varia tipicamente entre 768 (modelos base) e 4\,096 (modelos
+de grande porte). Geometricamente, tokens semanticamente próximos tendem a
+ocupar regiões próximas no espaço vetorial, propriedade explorada pela busca
+por similaridade de cosseno:
+\[
+  \text{sim}(\mathbf{u}, \mathbf{v}) = \frac{\mathbf{u} \cdot \mathbf{v}}
+  {\|\mathbf{u}\| \, \|\mathbf{v}\|}.
+\]
+
+% ---------------------------------------------------------------
+\section*{L}
+% ---------------------------------------------------------------
+
+\subsection*{Logits}
+\label{sec:logits}
+\index{logits|textbf}
+
+O termo \textit{logits} designa os valores reais não normalizados $\mathbf{z} \in \mathbb{R}^{|\mathcal{V}|}$
+produzidos pela última camada linear do modelo antes da aplicação da função
+de ativação. Formalmente, dado o vetor de estado oculto $\mathbf{h}$ da última
+camada do \textit{Transformer}, os logits são calculados como:
+\[
+  \mathbf{z} = \mathbf{W}_\text{lm}\,\mathbf{h} + \mathbf{b},
+\]
+em que $\mathbf{W}_\text{lm} \in \mathbb{R}^{|\mathcal{V}| \times d}$ é a
+matriz de projeção do modelo de linguagem e $\mathbf{b}$ é o viés. Os logits
+são convertidos em probabilidades pela função \textit{softmax}
+(ver Seção~\ref{sec:softmax}).
+
+% ---------------------------------------------------------------
+\section*{S}
+% ---------------------------------------------------------------
+
+\subsection*{SentencePiece}
+\label{sec:sentencepiece}
+\index{SentencePiece|textbf}
+
+O \textit{SentencePiece} é uma biblioteca de tokenização por sub-palavras
+independente de idioma desenvolvida pelo Google. Ao contrário do BPE clássico
+(ver Seção~\ref{sec:bpe}), o \textit{SentencePiece} opera diretamente sobre
+o fluxo de caracteres Unicode sem pré-segmentação por espaços, o que o torna
+aplicável a idiomas sem delimitadores explícitos de palavras (japonês, chinês,
+tailandês). O algoritmo suporta dois modelos: BPE e \textit{unigram language
+model}, que seleciona o vocabulário minimizando a perda de verossimilhança do
+corpus sob um modelo de linguagem de unigrama.
+
+\subsection*{Softmax}
+\label{sec:softmax}
+\index{softmax|textbf}
+
+A função \textit{softmax} $\sigma: \mathbb{R}^n \to \Delta^{n-1}$ converte
+um vetor de logits $\mathbf{z} = (z_1, \ldots, z_n)$ em uma distribuição de
+probabilidade sobre $n$ classes:
+\[
+  \sigma(\mathbf{z})_i = \frac{e^{z_i}}{\sum_{j=1}^{n} e^{z_j}}, \quad i = 1, \ldots, n.
+\]
+No contexto da geração de texto, $n = |\mathcal{V}|$ e cada $\sigma(\mathbf{z})_i$
+representa a probabilidade do token $i$ ser o próximo token gerado. A
+\emph{temperatura} $\tau > 0$ escala os logits antes da \textit{softmax}:
+\[
+  \sigma(\mathbf{z}/\tau)_i = \frac{e^{z_i/\tau}}{\sum_j e^{z_j/\tau}}.
+\]
+Para $\tau \to 0$, a distribuição concentra-se no token de maior logit
+(\textit{greedy decoding}); para $\tau > 1$, a distribuição torna-se mais
+uniforme, aumentando a diversidade das saídas.
+
+% ---------------------------------------------------------------
+\section*{W}
+% ---------------------------------------------------------------
+
+\subsection*{WordPiece}
+\label{sec:wordpiece}
+\index{WordPiece|textbf}
+
+O \textit{WordPiece} é um algoritmo de tokenização por sub-palavras
+desenvolvido pelo Google e utilizado em modelos como BERT. Em vez de fundir
+o par de maior frequência absoluta (como no BPE), o \textit{WordPiece}
+seleciona o par $(a, b)$ que maximiza o ganho de verossimilhança do modelo
+de linguagem ao substituir a sequência $ab$ por um único token, definido como:
+\[
+  \text{score}(a, b) = \frac{\text{freq}(ab)}{\text{freq}(a) \cdot \text{freq}(b)}.
+\]
+Essa formulação favorece fusões de pares cujos componentes individuais são
+relativamente raros, produzindo um vocabulário de sub-palavras com maior
+coerência linguística.

@@ -1,0 +1,92 @@
+\documentclass[12pt,oneside]{book}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{abntex2cite}
+\usepackage{makeidx}
+\makeindex
+
+% Configuracao global dos blocos de codigo
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{orange!80!black},
+  numberstyle=\tiny\color{gray},
+  numbers=left,
+  stepnumber=1,
+  numbersep=8pt,
+  frame=single,
+  framesep=4pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  showstringspaces=false,
+  tabsize=4,
+  captionpos=b,
+  xleftmargin=1em,
+  xrightmargin=0.5em,
+  backgroundcolor=\color{gray!5},
+  extendedchars=true,
+  inputencoding=utf8
+}
+
+\geometry{a4paper, margin=2.5cm}
+\onehalfspacing
+
+\title{Arquitetura de LLMs e IA Aplicada\\Do Basico ao Avancado com RAG Corporativo}
+\author{Autores do Projeto}
+\date{\today}
+
+\begin{document}
+
+\frontmatter
+\maketitle
+\include{chapters/00_prefacio}
+\tableofcontents
+
+\mainmatter
+\include{chapters/01_fundamentos_llm_ia}
+\include{chapters/02_ambiente_e_reprodutibilidade}
+\include{chapters/03_agentes_langgraph_memoria}
+\include{chapters/04_tools_skills_mcp}
+\include{chapters/05_rag_fundamentos}
+\include{chapters/06_rag_corporativo}
+\include{chapters/07_pipeline_assincrono_aws}
+\include{chapters/08_segmentacao_personas_twins}
+\include{chapters/09_graphrag_neptune}
+\include{chapters/10_confiabilidade_observabilidade}
+\include{chapters/11_avaliacao_metricas_mercado}
+\include{chapters/12_llm_as_judge}
+\include{chapters/13_golden_dataset_regressao}
+\include{chapters/14_roadmap_producao}
+\include{chapters/15_cicd_multiambiente_bancario}
+\include{chapters/16_qualidade_seguranca_esteiras}
+\include{chapters/17_frontend_cloudfront_console}
+
+\appendix
+\include{chapters/99_apendice_template_capitulo}
+\include{chapters/98_apendice_glossario_matematico}
+
+\backmatter
+\chapter*{Sobre os Autores}
+Texto reservado para biografia dos autores.
+
+\bibliography{referencias}
+
+\printindex
+
+\end{document}
