@@ -1,6 +1,10 @@
 \chapter{Ambiente, Ferramentas e Reprodutibilidade}
 \label{chap:ambiente_reprodutibilidade}
 
+\chapterepigraph{``I accept nothing on authority. A hypothesis must be backed by reason, or else it is worthless.''}{Isaac Asimov, \textit{I, Robot} (1950).}
+{\small\itshape\color{AccentGray}
+A exig\^{e}ncia de Asimov --- que toda hip\'{o}tese seja sustentada por raz\~{a}o, n\~{a}o por autoridade~\cite{asimov1950irobot} --- ressoa diretamente no imperativo freireano de \textit{rigor metodol\'{o}gico}: aceitar premissas sem verifica\c{c}\~{a}o \'{e} uma forma de abdi\c{c}\~{a}o intelectual incompat\'{i}vel com o ato de pensar certo~\cite{freire1996autonomia}. Reprodutibilidade, neste contexto, \'{e} o rigor operacionalizado --- a garantia de que qualquer colaborador pode reconstruir o mesmo ambiente, verificar os mesmos resultados e contestar qualquer afirma\c{c}\~{a}o feita neste livro. O ambiente n\~{a}o \'{e} detalhe operacional; \'{e} condi\c{c}\~{a}o de validade cient\'{i}fica.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Escopo do cap\'itulo}
 % ---------------------------------------------------------------
@@ -54,10 +58,13 @@ riscos, o projeto adota as seguintes pr\'aticas:
 
 \begin{itemize}[leftmargin=*]
   \item Todas as depend\^encias s\~ao declaradas com vers\~ao exata no
-        arquivo \texttt{requirements.txt} (n\~ao utilizar
-        \texttt{\~{}=} ou \texttt{>=} sem limites superiores);
+        material de instala\c{c}\~ao do projeto, com um comando
+        expl\'icito de \texttt{pip install} documentado no
+        \texttt{README.md}; para a camada Lambda, as depend\^encias
+        continuam separadas em
+        \texttt{infraestrutura/modules/lambda\_layer/requirements.txt};
   \item O modelo de infer\^encia \'e referenciado pelo identificador
-        versionado \texttt{us.anthropic.claude-sonnet-4-5-20250514-v1:0},
+        versionado \nolinkurl{global.anthropic.claude-sonnet-4-5-20250929-v1:0},
         e n\~ao por alias gen\'erico como \texttt{claude-sonnet-latest};
   \item A vers\~ao do Python (\texttt{3.11.x}) e do \textit{Terraform}
         (\texttt{1.7.x}) s\~ao documentadas no arquivo \texttt{README.md}
@@ -108,28 +115,62 @@ python3.11 -m venv .venv
 source .venv/bin/activate          # Linux/macOS
 # .venv\Scripts\Activate.ps1       # Windows PowerShell
 
-# Instalar dependencias fixadas
+# Instalar as dependencias do ambiente didatico
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install langgraph langchain langchain-anthropic langchain-community \
+            langchain-text-splitters langchain-mcp-adapters faiss-cpu \
+            sentence-transformers psycopg2-binary mcp python-dotenv \
+            duckduckgo-search wikipedia httpx deepeval
 \end{lstlisting}
 
-As depend\^encias m\'inimas para executar os notebooks do projeto s\~ao
-listadas abaixo com as vers\~oes verificadas:
+No estado atual do reposit\'orio, o comando acima \'e a fonte prim\'aria
+de instala\c{c}\~ao do ambiente local, conforme o \texttt{README.md}. O
+arquivo \texttt{requirements.txt} permanece restrito ao empacotamento da
+camada Lambda, e n\~ao ao ambiente did\'atico da raiz do projeto.
 
 \begin{lstlisting}[language=bash,
-  caption={Depend\^encias principais (\texttt{requirements.txt}).},
+      caption={Pacotes principais instalados no ambiente local do projeto.},
   label={lst:requirements}]
-boto3==1.34.69
-langchain==0.2.16
-langchain-community==0.2.16
-langgraph==0.2.4
-faiss-cpu==1.8.0
-tiktoken==0.7.0
-jupyter==1.0.0
-nbformat==5.10.4
-pypdf==4.3.1
-requests==2.32.3
+langgraph
+langchain
+langchain-anthropic
+langchain-community
+langchain-text-splitters
+langchain-mcp-adapters
+faiss-cpu
+sentence-transformers
+psycopg2-binary
+mcp
+python-dotenv
+duckduckgo-search
+wikipedia
+httpx
+deepeval
 \end{lstlisting}
+
+\subsubsection*{Resultado da instala\c{c}\~ao}
+
+Na valida\c{c}\~ao de 2026-05-03, a execu\c{c}\~ao do comando do
+C\'odigo~\ref{lst:venv_setup} no Python~3.11.9 n\~ao exigiu novas
+instala\c{c}\~oes: os pacotes j\'a estavam presentes no ambiente local.
+
+\begin{lstlisting}[language=bash,
+      caption={Sa\'ida resumida da valida\c{c}\~ao das depend\^encias locais.},
+      label={lst:cap2_pip_output}]
+Requirement already satisfied: langgraph (...)
+Requirement already satisfied: langchain (...)
+Requirement already satisfied: langchain-anthropic (...)
+Requirement already satisfied: langchain-community (...)
+Requirement already satisfied: faiss-cpu (...)
+Requirement already satisfied: sentence-transformers (...)
+Requirement already satisfied: mcp (...)
+Requirement already satisfied: deepeval (...)
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} para o leitor, o aspecto
+importante n\~ao \'e a lista exaustiva de depend\^encias transitivas, mas
+o fato de o comando documentado no projeto resolver o conjunto m\'inimo
+de bibliotecas sem erro bloqueante.
 
 \subsection{Passo 2 --- Configurar credenciais AWS}
 
@@ -154,6 +195,28 @@ export AWS_PROFILE=langchain-dev
 \textit{hardcoded} no c\'odigo nem versionadas no reposit\'orio.
 Recomenda-se incluir \texttt{.env} e \texttt{*.tfvars} no
 \texttt{.gitignore}.
+
+\subsubsection*{Resultado da valida\c{c}\~ao da credencial ativa}
+
+Embora o exemplo acima use perfil nomeado, a valida\c{c}\~ao pr\'atica do
+ambiente pode ocorrer tamb\'em com credenciais ativas por vari\'aveis de
+ambiente ou credenciais padr\~ao da AWS CLI. Em 2026-05-03, o comando
+de verifica\c{c}\~ao retornou:
+
+\begin{lstlisting}[language=bash,
+      caption={Identidade AWS observada no ambiente de desenvolvimento.},
+      label={lst:cap2_aws_identity}]
+{
+            "UserId": "AIDARU55WWGGKGGKGGNQT",
+            "Account": "113677611404",
+            "Arn": "arn:aws:iam::113677611404:user/wilian"
+}
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} o objetivo do teste n\~ao \'e
+for\c{c}ar um mecanismo espec\'ifico de autentica\c{c}\~ao, e sim comprovar
+que a identidade ativa pertence \\`a conta esperada antes de qualquer
+provisionamento.
 
 \subsection{Passo 3 --- Provisionar a infraestrutura com Terraform}
 
@@ -187,15 +250,47 @@ Ap\'os a conclus\~ao, os \textit{outputs} relevantes --- URL da API,
 terraform output -json > ../model_data.json
 \end{lstlisting}
 
+\subsubsection*{Resultado da valida\c{c}\~ao do Terraform}
+
+A execu\c{c}\~ao observada em 2026-05-03 confirmou o fluxo correto:
+\texttt{terraform validate} s\'o \'e conclusivo ap\'os
+\texttt{terraform init}, pois os m\'odulos precisam estar instalados
+localmente.
+
+\begin{lstlisting}[language=bash,
+      caption={Sa\'ida resumida do \\texttt{terraform init} local.},
+      label={lst:cap2_terraform_init_output}]
+Initializing modules...
+- api_gateway in modules\api_gateway
+- cloudfront_frontend in modules\cloudfront_frontend
+- dynamodb in modules\dynamodb
+...
+Terraform has been successfully initialized!
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={Sa\'ida do \\texttt{terraform validate} ap\'os a inicializa\c{c}\~ao.},
+      label={lst:cap2_terraform_validate_output}]
+Success! The configuration is valid.
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} esse detalhe operacional \'e
+importante para o leitor porque evita um falso diagn\'ostico. Um erro de
+\textit{module not installed} nessa etapa n\~ao indica falha da
+infraestrutura, apenas aus\^encia da inicializa\c{c}\~ao pr\'evia.
+
 \subsection{Passo 4 --- Executar os notebooks}
 
 Com o ambiente configurado e a infraestrutura provisionada, os
-\textit{notebooks} s\~ao iniciados via Jupyter ou diretamente no
-VS Code com a extens\~ao \textit{Jupyter}:
+\textit{notebooks} podem ser executados diretamente no VS Code com a
+extens\~ao \textit{Jupyter}, que foi o fluxo validado nesta revis\~ao. Se
+o leitor preferir um servidor local no navegador, o JupyterLab deve ser
+instalado explicitamente no ambiente Python:
 
 \begin{lstlisting}[language=bash,
-  caption={Inicializa\c{c}\~ao do servidor Jupyter.},
+      caption={Fluxo opcional para iniciar um servidor local do JupyterLab.},
   label={lst:jupyter_start}]
+python -m pip install jupyterlab
 jupyter lab --no-browser --port=8888
 \end{lstlisting}
 
@@ -205,26 +300,92 @@ Recomenda-se executar os notebooks na ordem natural dos cap\'itulos ---
 \textit{notebook} definem constantes e fun\c{c}\~oes utilizadas
 nas c\'elulas subsequentes.
 
+\subsubsection*{Resultado da execu\c{c}\~ao no VS Code}
+
+No ambiente validado em 2026-05-03, a primeira c\'elula de c\'odigo do
+arquivo \texttt{langchain.ipynb} executou com sucesso no kernel
+Python~3.11.9 do VS Code e retornou:
+
+\begin{lstlisting}[language=bash,
+      caption={Sa\'ida da primeira c\'elula do notebook principal no VS Code.},
+      label={lst:cap2_notebook_output}]
+Dependencias instaladas com sucesso!
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} para o leitor, essa evid\^encia
+mostra que o fluxo principal do projeto hoje \'e a execu\c{c}\~ao do
+notebook no editor, sem depend\^encia obrigat\'oria de um processo
+externo de JupyterLab.
+
 % ---------------------------------------------------------------
 \section{Plano de testes do cap\'itulo}
 % ---------------------------------------------------------------
 
+Esta se\c{c}\~ao apresenta os comandos de valida\c{c}\~ao efetivamente
+executados no ambiente do projeto. Sempre que poss\'ivel, o c\'odigo do
+teste aparece junto da sa\'ida observada e de um coment\'ario curto para
+orientar a interpreta\c{c}\~ao do leitor.
+
 \subsection{Teste funcional}
 
 \begin{itemize}[leftmargin=*]
-  \item \textbf{TC-01:} Executar \texttt{pip install -r requirements.txt}
-        em ambiente zerado e verificar aus\^encia de conflitos de
-        vers\~ao (exit code~0).
+  \item \textbf{TC-01:} Executar o comando de instala\c{c}\~ao
+        documentado no \texttt{README.md} e verificar aus\^encia de
+        erros bloqueantes no \textit{resolver} do \texttt{pip}.
   \item \textbf{TC-02:} Executar \texttt{python -c "import boto3,
         langchain, langgraph, faiss"} e verificar que nenhum
         \texttt{ImportError} \'e lan\c{c}ado.
   \item \textbf{TC-03:} Executar \texttt{aws sts get-caller-identity}
-        com o perfil configurado e verificar que o ARN retornado
-        pertence \`a conta correta.
-  \item \textbf{TC-04:} Executar \texttt{terraform validate} no
-        diret\'orio de infraestrutura e verificar mensagem
+        com a credencial ativa (perfil nomeado ou ambiente padr\~ao) e
+        verificar que o ARN retornado pertence \`a conta correta.
+  \item \textbf{TC-04:} Executar \texttt{terraform init} seguido de
+        \texttt{terraform validate} no diret\'orio de infraestrutura e
+        verificar mensagem
         \texttt{Success! The configuration is valid.}
 \end{itemize}
+
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+\paragraph{TC-01 --- instala\c{c}\~ao do ambiente}
+
+O teste reutiliza exatamente o comando documentado no
+C\'odigo~\ref{lst:venv_setup}. A sa\'ida resumida foi apresentada no
+C\'odigo~\ref{lst:cap2_pip_output}. O ponto importante para o leitor \'e
+que a instala\c{c}\~ao n\~ao falhou por conflito de depend\^encias.
+
+\paragraph{TC-02 --- importa\c{c}\~oes essenciais}
+
+\begin{lstlisting}[language=Python,
+  caption={TC-02 --- verifica\c{c}\~ao m\'inima de importa\c{c}\~oes do ambiente.},
+  label={lst:cap2_import_check}]
+import boto3, langchain, langgraph, faiss
+print("IMPORTS_OK")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+  caption={TC-02 --- sa\'ida da verifica\c{c}\~ao de importa\c{c}\~oes.},
+  label={lst:cap2_import_output}]
+IMPORTS_OK
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} esse teste n\~ao prova que todo
+o projeto est\'a funcional, mas confirma que o n\'ucleo do ambiente
+Python foi carregado sem erro de m\'odulo ausente.
+
+\paragraph{TC-03 --- identidade AWS ativa}
+
+O comando executado foi \texttt{aws sts get-caller-identity}; a sa\'ida
+observada consta no C\'odigo~\ref{lst:cap2_aws_identity}. O leitor deve
+verificar especialmente o campo \texttt{Arn}, pois ele identifica com
+clareza a entidade autenticada.
+
+\paragraph{TC-04 --- valida\c{c}\~ao do Terraform}
+
+O teste foi decomposto em duas etapas, conforme os
+C\'odigos~\ref{lst:cap2_terraform_init_output} e
+\ref{lst:cap2_terraform_validate_output}. Essa decomposi\c{c}\~ao evita
+confundir falha de inicializa\c{c}\~ao com erro sem\^antico de
+configura\c{c}\~ao.
 
 \subsection{Teste de desempenho}
 
@@ -233,9 +394,17 @@ nas c\'elulas subsequentes.
         em ambiente limpo; crit\'erio: conclus\~ao em menos de
         20\,minutos para o conjunto completo de m\'odulos.
   \item \textbf{TP-02:} Medir o tempo de inicializa\c{c}\~ao do
-        kernel Jupyter at\'e a execu\c{c}\~ao da primeira c\'elula
-        de importa\c{c}\~ao; crit\'erio: menos de 30\,s.
+      kernel do notebook no VS Code at\'e a execu\c{c}\~ao da primeira
+      c\'elula de importa\c{c}\~ao; crit\'erio: menos de 30\,s.
 \end{itemize}
+
+\subsubsection*{Observa\c{c}\~ao sobre TP-02}
+
+Na valida\c{c}\~ao de 2026-05-03, o notebook principal executou a
+primeira c\'elula com sucesso no VS Code. O ambiente n\~ao possu\'ia
+\texttt{jupyter-lab} pr\'e-instalado, raz\~ao pela qual o crit\'erio foi
+explicitado em termos do fluxo real de uso do projeto, e n\~ao de um
+servidor local opcional.
 
 \subsection{Teste de qualidade}
 
@@ -244,9 +413,32 @@ nas c\'elulas subsequentes.
         \texttt{.gitignore} exclui \texttt{*.tfstate},
         \texttt{*.tfvars} e \texttt{.env} do versionamento.
   \item \textbf{TQ-02:} Confirmar que nenhuma chave de acesso AWS
-        est\'a presente no hist\'orico de commits via
-        \texttt{git log -{}-all -{}-full-diff | grep -i "AKIA"}.
+                        com padr\~ao realista \texttt{AKIA[0-9A-Z]\{16\}} est\'a
+                        presente na \textit{working tree} rastreada pelo Git.
 \end{itemize}
+
+\subsubsection*{Evid\^encias de qualidade}
+
+\begin{lstlisting}[language=bash,
+      caption={TQ-01 --- fragmento relevante do \texttt{.gitignore}.},
+      label={lst:cap2_gitignore_output}]
+.env
+**/.terraform/
+infraestrutura/*.tfstate
+infraestrutura/*.tfstate.backup
+infraestrutura/secrets.auto.tfvars
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TQ-02 --- busca por padr\~ao de chave AWS na \textit{working tree}.},
+      label={lst:cap2_akia_output}]
+PADRAO_NAO_ENCONTRADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} a primeira tentativa de busca
+textual simples por \texttt{AKIA} produziu falso positivo no pr\'oprio
+texto do livro. Por isso, o teste foi refinado para um padr\~ao de chave
+mais preciso, reduzindo ru\'ido e tornando a checagem reprodut\'ivel.
 
 % ---------------------------------------------------------------
 \section{Crit\'erios de aceite}
@@ -257,8 +449,8 @@ nas c\'elulas subsequentes.
         Windows~11 com Python~3.11 e Terraform~1.7.
   \item TP-01: \texttt{terraform apply} conclu\'ido em menos de
         20\,minutos (evidenciar com \textit{log} de execu\c{c}\~ao).
-  \item TQ-01 e TQ-02 aprovados; nenhuma credencial versionada
-        detectada.
+  \item TQ-01 e TQ-02 aprovados; nenhum padr\~ao plaus\'ivel de
+        credencial AWS detectado na \textit{working tree}.
 \end{itemize}
 
 % ---------------------------------------------------------------

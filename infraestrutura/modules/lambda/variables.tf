@@ -131,6 +131,12 @@ variable "s3_bucket_arn" {
   default     = ""
 }
 
+variable "enable_s3_ingester_trigger" {
+  description = "Habilita permissao Lambda + notificacao S3 para acionar o ingester"
+  type        = bool
+  default     = true
+}
+
 variable "langfuse_public_key" {
   description = "Chave pública Langfuse para OTel (opcional)"
   type        = string

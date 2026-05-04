@@ -118,7 +118,7 @@ resource "aws_lambda_function" "ingester" {
 }
 
 resource "aws_lambda_permission" "allow_s3_ingester" {
-  count         = var.s3_bucket_arn != "" ? 1 : 0
+  count         = var.enable_s3_ingester_trigger ? 1 : 0
   statement_id  = "AllowS3Invoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.ingester.function_name
@@ -127,7 +127,7 @@ resource "aws_lambda_permission" "allow_s3_ingester" {
 }
 
 resource "aws_s3_bucket_notification" "entrevistas_trigger" {
-  count  = var.s3_bucket_name_for_trigger != "" ? 1 : 0
+  count  = var.enable_s3_ingester_trigger ? 1 : 0
   bucket = var.s3_bucket_name_for_trigger
 
   lambda_function {

@@ -35,11 +35,12 @@ Thumbs.db
 modelo_clustering_slim.pkl
 
 # Terraform — estado e build artifacts
-infraestrutura/.terraform/
-infraestrutura/.terraform.lock.hcl
+**/.terraform/
+**/.terraform.lock.hcl
 infraestrutura/*.tfstate
 infraestrutura/*.tfstate.backup
 infraestrutura/*.tfplan
+infraestrutura/.terraform.tfstate.lock.info
 infraestrutura/modules/lambda_layer/layer_content/
 infraestrutura/modules/lambda_layer/python/
 infraestrutura/modules/lambda_layer/dist/
@@ -48,3 +49,30 @@ infraestrutura/modules/lambda/dist/
 # tfvars com chaves sensíveis (commitar apenas o base sem segredos)
 infraestrutura/secrets.auto.tfvars
 infraestrutura/modules/neptune_replication/dist/
+
+# infra_produtos — state e providers (não versionar)
+infra_produtos/**/.terraform/
+infra_produtos/.tfdata_shared/
+infra_produtos/**/*.tfstate
+infra_produtos/**/*.tfstate.backup
+infra_produtos/**/*.tfplan
+infra_produtos/**/migrate_backend_*.log
+
+# LaTeX — arquivos auxiliares gerados na compilação
+livro/**/*.aux
+livro/**/*.log
+livro/**/*.blg
+livro/**/*.idx
+livro/**/*.ilg
+livro/**/*.ind
+livro/**/*.out
+livro/**/*.toc
+livro/**/*.pdf
+livro/**/*.synctex.gz
+livro/**/*.fls
+livro/**/*.fdb_latexmk
+
+# Dependencias vendorizadas da Lambda Layer (qualquer subpasta)
+**/lambda_layer/python/
+**/lambda_layer/layer_content/
+**/lambda_layer/dist/

@@ -1,6 +1,10 @@
 \chapter{Tools, Skills e MCP}
 \label{chap:tools_skills_mcp}
 
+\chapterepigraph{``Space: the final frontier. \ldots\ to explore strange new worlds, to seek out new life and new civilizations, to boldly go where no one has gone before.''}{\textit{Star Trek: The Next Generation}, narra\c{c}\~ao de abertura (1987--1994).}
+{\small\itshape\color{AccentGray}
+A miss\~ao da \textit{Enterprise} n\~ao era definida pelo que a tripula\c{c}\~ao tinha \emph{proibido} de fazer, mas pelo que ela estava \emph{equipada} para fazer. Phasers, tricorders, teletransportadores e comunicadores n\~ao limitavam a explora\c{c}\~ao: eram o que a tornava poss\'ivel. Num agente de IA, \textit{tools} e \textit{skills} cumprem esse mesmo papel --- cada ferramenta registrada no MCP \'e uma capacidade nova que o agente adquire para agir no mundo. A diferen\c{c}a \'e que, ao contr\'ario da tripula\c{c}\~ao do \textit{Enterprise} --- que por vezes ignorava a Diretiva Prim\'aria quando julgava necess\'ario ---, o agente opera dentro de um espa\c{c}o de a\c{c}\~ao explicitamente declarado, audit\'avel e revog\'avel. A autonomia aqui n\~ao \'e uma aventura: \'e uma engenharia.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Pr\'e-requisitos}
 % ---------------------------------------------------------------
@@ -167,8 +171,8 @@ def listar_produtos_investimento(perfil: str) -> str:
     return "Produtos recomendados: " + ", ".join(produtos)
 
 llm = ChatBedrockConverse(
-    model="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
-    region_name="us-east-1",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    region_name="sa-east-1",
 )
 tools = [consultar_saldo, listar_produtos_investimento]
 agente = create_react_agent(llm, tools)
@@ -383,6 +387,57 @@ Marque V (verdadeiro) ou F (falso):
         \textit{``Qual o saldo do cliente C002?''}.
 \end{itemize}
 
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+\paragraph{TF-04-01 --- invoca\c{c}\~ao direta da tool nativa}
+
+\begin{lstlisting}[language=Python,
+      caption={TF-04-01 --- invoca\c{c}\~ao direta de \texttt{consultar\_saldo}.},
+      label={lst:cap4_tf0401_codigo}]
+# Tool definida no Codigo lst:tool_nativa
+resultado = consultar_saldo.invoke({"cliente_id": "C001"})
+print(resultado)
+
+resultado_invalido = consultar_saldo.invoke({"cliente_id": "X999"})
+print(resultado_invalido)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TF-04-01 --- sa\'ida: saldo existente e cliente inexistente.},
+      label={lst:cap4_tf0401_saida}]
+Saldo do cliente C001: R$ 15.000,00
+Cliente X999 nao encontrado.
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} a tool retorna o valor formatado para
+clientes v\'alidos e uma mensagem limpa para IDs inv\'alidos, sem
+lan\c{c}ar exce\c{c}\~ao. TF-04-01 e TI-04-02 aprovados.
+
+\paragraph{TF-04-04 --- agente usando tool correta}
+
+\begin{lstlisting}[language=Python,
+      caption={TF-04-04 --- agente seleciona tool correta para pergunta de saldo.},
+      label={lst:cap4_tf0404_codigo}]
+from langchain_core.messages import HumanMessage
+
+resultado = agente.invoke(
+    {"messages": [HumanMessage("Qual o saldo do cliente C002?")]}
+)
+print(resultado["messages"][-1].content)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TF-04-04 --- resposta do agente usando \texttt{consultar\_saldo}.},
+      label={lst:cap4_tf0404_saida}]
+O saldo do cliente C002 e R$ 8.500,50.
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o agente escolheu a tool
+\texttt{consultar\_saldo} (e n\~ao \texttt{listar\_produtos\_investimento})
+com base no \textit{docstring} e na pergunta. Esse \'e o mecanismo
+central de sele\c{c}\~ao sem\^antica descrito na se\c{c}\~ao anterior.
+TF-04-04 aprovado.
+
 \subsection{Teste de isolamento}
 
 \begin{itemize}[leftmargin=*]
@@ -392,6 +447,11 @@ Marque V (verdadeiro) ou F (falso):
         de cliente inexistente retorna mensagem de erro sem
         exce\c{c}\~ao n\~ao tratada.
 \end{itemize}
+
+\noindent TI-04-01 \'e verificado implicitamente pela arquitetura
+\texttt{stdio}: o servidor MCP s\'o l\^e/escreve em \texttt{stdin}/
+\texttt{stdout}, sem abrir sockets. TI-04-02 foi coberto junto ao
+TF-04-01 no exemplo acima (cliente \texttt{X999}).
 
 % ---------------------------------------------------------------
 \section{Crit\'erios de aceite}

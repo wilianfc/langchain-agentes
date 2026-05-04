@@ -1,6 +1,10 @@
 \chapter{Pipeline Integrado em Producao}
 \label{chap:pipeline_integrado_producao}
 
+\chapterepigraph{``Ideas are cheap. It's only what you do with them that counts.''}{Isaac Asimov, \textit{The Secrets of the Universe} (1989).}
+{\small\itshape\color{AccentGray}
+Asimov sabia que nenhuma ideia vale seu pre\c{c}o antes de enfrentar a execu\c{c}\~{a}o~\cite{asimov1989secrets}. Paulo Freire nomeou o problema inverso: o curr\'{i}culo fragmentado deposita conceitos isolados sem jamais reconstituir a totalidade concreta de que fazem parte --- e o resultado \'{e} um saber in\'{e}rte, incapaz de agir sobre o mundo~\cite{freire1968pedagogia}. Este cap\'{i}tulo \'{e} a resposta t\'{e}cnica a esse problema: os componentes constru\'{i}dos separadamente s\'{o} revelam seu sentido pleno quando operam simultaneamente, como sistema coeso. A integra\c{c}\~{a}o n\~{a}o \'{e} um ap\^{e}ndice --- \'{e} o momento em que as partes se tornam, finalmente, compreens\'{i}veis.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Escopo do capitulo}
 % ---------------------------------------------------------------
@@ -264,6 +268,38 @@ Ao final, o aluno deve comprovar:
   \item \textbf{TC-03:} modo \texttt{twin} com cliente indexado retorna
         score superior ao mesmo modo com cliente nao indexado.
 \end{itemize}
+
+\subsection{Teste de validacao em producao (2026-05-03)}
+
+Apos a reconstrucao completa da infraestrutura por produtos, o pipeline
+integrado foi validado ponta a ponta no ambiente \texttt{dev} com os
+recursos AWS efetivamente provisionados. Observou-se:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{TVP-01 (modo segmento):}
+        \texttt{request\_id}
+        \nolinkurl{0e73a7f9-84ee-4359-aff3-54bd019b3410}. \par
+        Estado final: \texttt{COMPLETED}; tempo de processamento:
+        $\approx 18$\,s; \texttt{cluster\_id = 3}, segmento
+        \emph{Massa Est\'{a}vel}; resposta gerada pelo modelo
+        \texttt{global.anthropic.claude-sonnet-4-5-20250929-v1:0}
+        via Amazon Bedrock;
+  \item \textbf{Indice de confiabilidade:} \texttt{score = 0.0},
+        n\'{\i}vel \emph{baixo}, \texttt{fontes\_ativas = []}, refletindo
+        que o indice OpenSearch ainda n\~ao possu\'{\i}a documentos
+        de segmento indexados --- confirma o comportamento esperado de
+        degrada\c{c}\~ao graciosamente descrito no Passo~5;
+  \item Modelo de segmenta\c{c}\~ao carregado de
+        \texttt{s3://langchain-agent-artifacts-dev/\allowbreak{}clientes-agente/\allowbreak{}modelo\_clustering\_slim.pkl}
+        com \texttt{n\_clusters = 4}.
+\end{itemize}
+
+Esse resultado valida TC-01 (modelo presente no S3) e TC-02 (pipeline retorna
+\texttt{COMPLETED} no modo \texttt{segmento}), confirmando que a integra\c{c}\~ao
+das tr\^es camadas --- classifica\c{c}\~ao, RAG e Bedrock --- opera corretamente
+em produ\c{c}\~ao. O score baixo de confiabilidade sinaliza que a etapa
+subsequente natural \'{e} executar a fase offline (\texttt{aws\_pipeline\_clientes.py
+--mode pipeline}) para popular os \'{\i}ndices OpenSearch e habilitar o RAG h\'{\i}brido.
 
 \subsection{Teste de qualidade de resposta}
 

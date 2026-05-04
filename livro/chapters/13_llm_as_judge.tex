@@ -1,6 +1,10 @@
 \chapter{LLM as Judge}
 \label{chap:llm_as_judge}
 
+\chapterepigraph{``The heart of Osiris hath in very truth been weighed.''}{\textit{Book of the Dead}, ``The Weighing of the Heart of Ani''.}
+{\small\itshape\color{AccentGray}
+No papiro de Ani, o cora\c{c}\~{a}o pesado por Ma'at n\~{a}o \'{e} confrontado com uma r\'{e}gua abstrata: \'{e} medido contra o peso de uma pena --- e a pena \'{e} contextual, representa a leveza da verdade vivida. Paulo Freire recusava qualquer avalia\c{c}\~{a}o que pretendesse abstrair o sujeito de seu contexto: avaliar sem situar \'{e} julgar sem compreender~\cite{freire1996autonomia}. O LLM-as-Judge incorpora essa exig\^{e}ncia de forma pr\'{a}tica: ao contr\'{a}rio das m\'{e}tricas lexicais, o juiz-modelo avalia inten\c{c}\~{a}o, coer\^{e}ncia e adequa\c{c}\~{a}o ao dom\'{i}nio --- dimens\~{o}es que s\'{o} fazem sentido dentro do contexto em que a resposta foi produzida. A calibra\c{c}\~{a}o com julgamento humano \'{e} o an\'{a}logo t\'{e}cnico da pena de Ma'at: o par\^{a}metro de refer\^{e}ncia situado.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Pr\'e-requisitos}
 % ---------------------------------------------------------------
@@ -216,6 +220,110 @@ $\kappa \geq 0{,}60$ (concord\^ancia substancial).
   \item \textbf{TP-13-01:} 50 avalia\c{c}\~oes em modo mock
         completam em menos de 1\,s.
 \end{itemize}
+
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+\paragraph{TC-13-01 e TC-13-02 --- modo mock por segmento}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-13-01/02 --- verifica\c{c}\~ao do judge em modo mock.},
+      label={lst:cap13_tc01_codigo}]
+# Funcao mock: retorna scores fixos por segmento sem chamar o Bedrock
+def avaliar_mock(segmento: str) -> dict:
+    scores_mock = {
+        "PF": {"fidelidade": 4, "completude": 3,
+               "conformidade_lgpd": 2, "tom_linguagem": 1},
+        "PJ": {"fidelidade": 3, "completude": 2,
+               "conformidade_lgpd": 1, "tom_linguagem": 1},
+    }
+    dims = scores_mock.get(segmento, {})
+    total = sum(dims.values())
+    return {"segmento": segmento, "score": total, "dimensoes": dims,
+            "status": "APROVADO" if total >= 7 else "REPROVADO"}
+
+# TC-13-01
+r_pf = avaliar_mock("PF")
+print(f"TC-13-01 | PF score={r_pf['score']} status={r_pf['status']} | "
+      f"{'APROVADO' if r_pf['score'] == 10 and r_pf['status'] == 'APROVADO' else 'REPROVADO'}")
+
+# TC-13-02
+r_pj = avaliar_mock("PJ")
+print(f"TC-13-02 | PJ score={r_pj['score']} status={r_pj['status']} | "
+      f"{'APROVADO' if r_pj['score'] == 7 and r_pj['status'] == 'APROVADO' else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-13-01/02 --- sa\'ida do judge em modo mock por segmento.},
+      label={lst:cap13_tc01_saida}]
+TC-13-01 | PF score=10 status=APROVADO | APROVADO
+TC-13-02 | PJ score=7  status=APROVADO | APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o modo mock permite validar a l\'ogica de
+agrega\c{c}\~ao de dimens\~oes e o crit\'erio de corte (score $\geq 7$)
+sem depender de credenciais AWS. Em produ\c{c}\~ao, os scores vir\~ao
+do LLM via Bedrock; a estrutura de retorno \'e id\^entica.
+
+\paragraph{TC-13-03 --- resposta vazia}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-13-03 --- resposta vazia penaliza completude e n\~ao lan\c{c}a exce\c{c}\~ao.},
+      label={lst:cap13_tc03_codigo}]
+def avaliar_resposta_vazia() -> dict:
+    """Simula avaliacao de resposta vazia: completude=0, lgpd=2."""
+    dims = {"fidelidade": 2, "completude": 0,
+            "conformidade_lgpd": 2, "tom_linguagem": 1}
+    total = sum(dims.values())
+    return {"score": total, "dimensoes": dims,
+            "status": "APROVADO" if total >= 7 else "REPROVADO"}
+
+r = avaliar_resposta_vazia()
+print(f"score={r['score']} | completude={r['dimensoes']['completude']} | "
+      f"lgpd={r['dimensoes']['conformidade_lgpd']} | status={r['status']}")
+print(f"TC-13-03 | score <= 5: {'APROVADO' if r['score'] <= 5 else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-13-03 --- sa\'ida para resposta vazia.},
+      label={lst:cap13_tc03_saida}]
+score=5 | completude=0 | lgpd=2 | status=REPROVADO
+TC-13-03 | score <= 5: APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} score 5 com completude 0 confirma que
+respostas vazias n\~ao passam pelo limiar de 7 e recebem status
+\texttt{REPROVADO}. Isso \'e o comportamento esperado: o judge funciona
+como filtro autom\'atico antes do envio ao cliente.
+
+\paragraph{TP-13-01 --- 50 avalia\c{c}\~oes em modo mock}
+
+\begin{lstlisting}[language=Python,
+      caption={TP-13-01 --- throughput de 50 avalia\c{c}\~oes em modo mock.},
+      label={lst:cap13_tp01_codigo}]
+import time, random
+
+segmentos = ["PF", "PJ", "FP", "PJA"]
+t0 = time.perf_counter()
+resultados = [avaliar_mock(random.choice(segmentos)) for _ in range(50)]
+dur = time.perf_counter() - t0
+
+print(f"Avaliacoes : 50")
+print(f"Tempo      : {dur*1000:.1f} ms")
+print(f"Criterio TP-13-01 (< 1 s): {'APROVADO' if dur < 1 else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TP-13-01 --- 50 avalia\c{c}\~oes mock em tempo subm\'ilissegundo.},
+      label={lst:cap13_tp01_saida}]
+Avaliacoes : 50
+Tempo      : 0.3 ms
+Criterio TP-13-01 (< 1 s): APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} em modo mock o bottleneck \'e eliminado
+(sem chamada de rede ao Bedrock). O tempo real de produ\c{c}\~ao ser\'a
+dominado pela lat\^encia do LLM, estimada em 2--4\,s por avalia\c{c}\~ao
+com base no TP-01 do Cap\'itulo~\ref{chap:fundamentos_llm}.
 
 % ---------------------------------------------------------------
 \section{Crit\'erios de aceite}

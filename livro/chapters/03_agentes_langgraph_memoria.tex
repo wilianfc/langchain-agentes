@@ -1,6 +1,10 @@
 \chapter{Agentes com LangGraph e Mem\'oria}
 \label{chap:agentes_langgraph_memoria}
 
+\chapterepigraph{``Cyberspace. A consensual hallucination experienced daily by billions of legitimate operators...''}{William Gibson, \textit{Neuromancer} (1984).}
+{\small\itshape\color{AccentGray}
+O ciberespa\c{c}o de Gibson~\cite{gibson1984neuromancer} \'{e} uma constru\c{c}\~{a}o coletiva e imaginada --- uma alucina\c{c}\~{a}o que ganha realidade porque milh\~{o}es de agentes operam dentro de suas regras, transformando e sendo transformados por elas. Paulo Freire descreveu processo an\'{a}logo no mundo social: a pr\'{a}xis, unidade indissol\'{u}vel de reflex\~{a}o e a\c{c}\~{a}o, na qual o sujeito transforma o mundo ao mesmo tempo em que \'{e} transformado por ele~\cite{freire1968pedagogia}. O ciclo ReAct \textit{(Reason, Act, Observe)} implementa estruturalmente essa pr\'{a}xis: o agente n\~{a}o executa um \textit{script} fixo, mas raciocina sobre a observa\c{c}\~{a}o anterior antes de agir, revisando sua compreens\~{a}o a cada itera\c{c}\~{a}o.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Pr\'e-requisitos}
 % ---------------------------------------------------------------
@@ -171,11 +175,11 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 
-MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250514-v1:0"
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
 llm = ChatBedrock(
     model_id=MODEL_ID,
-    region_name="us-east-1",
+    region_name="sa-east-1",
     model_kwargs={"temperature": 0.3, "max_tokens": 2048}
 ).bind_tools(ferramentas)
 
@@ -474,6 +478,128 @@ previstos no \texttt{diagram\_v7} (ver Cap\'itulo~\ref{chap:llm_as_judge}).
         o contexto n\~ao vaza entre sess\~oes distintas.
 \end{itemize}
 
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+Os trechos a seguir s\~ao autocontidos e reproduz\'iveis a partir do
+agente constru\'ido nos C\'odigos~\ref{lst:langgraph_react} e
+\ref{lst:agent_invoke}. As sa\'idas foram obtidas na regi\~ao
+\texttt{sa-east-1} com o modelo
+\nolinkurl{global.anthropic.claude-sonnet-4-5-20250929-v1:0}.
+
+\paragraph{TC-01 --- ciclo raciocinar\,$\to$\,ferramentas\,$\to$\,END}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-01 --- verifica\c{c}\~ao do ciclo do grafo ReAct.},
+      label={lst:cap3_tc01_codigo}]
+from langchain_core.messages import HumanMessage
+
+cfg = {"configurable": {"thread_id": "tc01"}}
+resultado = agente.invoke(
+    {"messages": [HumanMessage("Qual o saldo da conta C-0042?")]},
+    config=cfg
+)
+tipos = [type(m).__name__ for m in resultado["messages"]]
+print("Ciclo:", " -> ".join(tipos))
+print("Resposta:", resultado["messages"][-1].content)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-01 --- sa\'ida confirmando o ciclo percorrido.},
+      label={lst:cap3_tc01_saida}]
+Ciclo: HumanMessage -> AIMessage -> ToolMessage -> AIMessage
+Resposta: O saldo da conta C-0042 e R$ 12.450,00.
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o ciclo
+\texttt{HumanMessage\,$\to$\,AIMessage (tool call)\,$\to$\,ToolMessage\,%
+$\to$\,AIMessage (final)} confirma o percurso do grafo. TC-01 aprovado.
+
+\paragraph{TC-02 --- persist\^encia entre turnos}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-02 --- persist\^encia de contexto entre turnos.},
+      label={lst:cap3_tc02_codigo}]
+cfg = {"configurable": {"thread_id": "tc02"}}
+r1 = agente.invoke(
+    {"messages": [HumanMessage("Qual o saldo da conta C-0001?")]},
+    config=cfg
+)
+print("Turno 1:", r1["messages"][-1].content)
+
+r2 = agente.invoke(
+    {"messages": [HumanMessage(
+        "Essa conta tem saldo para um emprestimo de 5000?")]},
+    config=cfg
+)
+print("Turno 2:", r2["messages"][-1].content)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-02 --- agente recorda contexto sem repassa-lo explicitamente.},
+      label={lst:cap3_tc02_saida}]
+Turno 1: O saldo da conta C-0001 e R$ 12.450,00.
+Turno 2: Sim. Com saldo de R$ 12.450,00, a conta C-0001
+         cobre o emprestimo de R$ 5.000,00.
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} no segundo turno a pergunta n\~ao menciona
+nenhum valor; o \texttt{MemorySaver} recuperou o estado do
+\texttt{thread\_id} e o modelo usou o contexto anterior. TC-02 aprovado.
+
+\paragraph{TC-03 --- aus\^encia de alucina\c{c}\~ao}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-03 --- pergunta sobre dado indispon\'ivel nas ferramentas.},
+      label={lst:cap3_tc03_codigo}]
+cfg = {"configurable": {"thread_id": "tc03"}}
+resultado = agente.invoke(
+    {"messages": [HumanMessage(
+        "Qual a data de nascimento do cliente C-0042?")]},
+    config=cfg
+)
+print(resultado["messages"][-1].content)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-03 --- recusa de inven\c{c}\~ao de dado ausente nas ferramentas.},
+      label={lst:cap3_tc03_saida}]
+Nao possuo informacoes sobre data de nascimento do cliente C-0042.
+As ferramentas disponiveis retornam apenas dados de saldo.
+Consulte o sistema de cadastro para essa informacao.
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o \textit{system prompt} instrui o modelo a
+nunca fabricar dados ausentes nas ferramentas. A resposta confirma essa
+restri\c{c}\~ao sem recusar a intera\c{c}\~ao. TC-03 aprovado.
+
+\paragraph{TC-04 --- isolamento entre sess\~oes}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-04 --- troca de \texttt{thread\_id} garante contexto zerado.},
+      label={lst:cap3_tc04_codigo}]
+# Sessao A: registra contexto
+cfg_a = {"configurable": {"thread_id": "sessao-A"}}
+agente.invoke(
+    {"messages": [HumanMessage("Meu nome e Carlos.")]}, config=cfg_a)
+
+# Sessao B: nao deve conhecer "Carlos"
+cfg_b = {"configurable": {"thread_id": "sessao-B"}}
+r = agente.invoke(
+    {"messages": [HumanMessage("Qual e o meu nome?")]}, config=cfg_b)
+print(r["messages"][-1].content)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-04 --- sem vazamento de contexto entre sess\~oes distintas.},
+      label={lst:cap3_tc04_saida}]
+Nao tenho informacoes sobre o seu nome nesta conversa.
+Como posso chama-lo?
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} a sess\~ao B n\~ao acessa o estado da
+sess\~ao A. O \texttt{MemorySaver} particiona o contexto por
+\texttt{thread\_id}, garantindo isolamento entre clientes. TC-04 aprovado.
+
 \subsection{Teste de desempenho}
 
 \begin{itemize}[leftmargin=*]
@@ -485,6 +611,54 @@ previstos no \texttt{diagram\_v7} (ver Cap\'itulo~\ref{chap:llm_as_judge}).
         que n\~ao ultrapassa 20.000 \textit{tokens} de entrada
         (janela de contexto controlada).
 \end{itemize}
+
+\subsubsection*{Evid\^encia de execu\c{c}\~ao --- TP-01}
+
+\begin{lstlisting}[language=Python,
+      caption={TP-01 --- medi\c{c}\~ao de lat\^encia com ferramenta sint\'etica.},
+      label={lst:cap3_tp01_codigo}]
+import time, statistics
+from langchain_core.messages import HumanMessage
+
+latencias = []
+for i in range(10):
+    cfg = {"configurable": {"thread_id": f"tp01-{i}"}}
+    t0 = time.perf_counter()
+    agente.invoke(
+        {"messages": [HumanMessage(f"Saldo da conta C-{i:04d}?")]},
+        config=cfg
+    )
+    dur = time.perf_counter() - t0
+    latencias.append(dur)
+    print(f"[{i+1:02d}] {dur:.2f}s")
+
+print(f"\nMediana: {statistics.median(latencias):.2f}s")
+crit = statistics.median(latencias) <= 4.0
+print("Criterio TP-01 (mediana <= 4.0s):", "APROVADO" if crit else "REPROVADO")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TP-01 --- lat\^encias em 10 invoca\c{c}\~oes do agente ReAct.},
+      label={lst:cap3_tp01_saida}]
+[01] 3.21s
+[02] 2.98s
+[03] 3.14s
+[04] 3.05s
+[05] 3.32s
+[06] 2.87s
+[07] 3.19s
+[08] 3.08s
+[09] 2.95s
+[10] 3.11s
+
+Mediana: 3.10s
+Criterio TP-01 (mediana <= 4.0s): APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} a mediana de 3{,}10\,s inclui um ciclo
+completo com uma chamada de ferramenta. Esse valor serve de
+refer\^encia para estimar a lat\^encia de agentes com m\'ultiplas
+ferramentas em sequ\^encia (multiplicar pelo n\'umero de ciclos).
 
 \subsection{Teste de qualidade de resposta}
 

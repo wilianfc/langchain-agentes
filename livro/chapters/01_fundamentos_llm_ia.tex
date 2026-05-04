@@ -1,6 +1,10 @@
 \chapter{Fundamentos de IA e Modelos de Linguagem de Grande Escala}
 \label{chap:fundamentos_llm_ia}
 
+\chapterepigraph{``It is change, continuing change, inevitable change, that is the dominant factor in society today.''}{Isaac Asimov, \textit{My Own View} (1978).}
+{\small\itshape\color{AccentGray}
+Quando Asimov afirmou que a mudan\c{c}a \'{e} o fator dominante da sociedade~\cite{asimov1978myownview}, descrevia menos o mundo exterior do que a postura necess\'{a}ria diante dele. Paulo Freire nomearia essa postura como \textit{curiosidade epistemol\'{o}gica}: a disposi\c{c}\~{a}o de n\~{a}o aceitar o fen\^{o}meno como dado, mas interrogar seus mecanismos, suas causas e seus limites~\cite{freire1996autonomia}. Este cap\'{i}tulo exige exatamente essa curiosidade --- o leitor \'{e} convidado a n\~{a}o tratar o modelo de linguagem como or\'{a}culo opaco, mas a compreender por dentro a arquitetura que o faz funcionar: \textit{tokens}, aten\c{c}\~{a}o, temperatura e janela de contexto.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Escopo do cap\'itulo}
 % ---------------------------------------------------------------
@@ -196,8 +200,8 @@ Anthropic:
   label={lst:bedrock_hello}]
 import boto3, json
 
-MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250514-v1:0"
-REGION   = "us-east-1"
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+REGION   = "sa-east-1"
 
 client = boto3.client("bedrock-runtime", region_name=REGION)
 
@@ -233,6 +237,37 @@ print(f"\nTokens consumidos: entrada={tokens['input_tokens']}, "
 Verifica-se que o campo \texttt{usage} retornado pela API cont\'em a
 contagem exata de \textit{tokens} de entrada e sa\'ida, permitindo o
 rastreamento preciso dos custos de infer\^encia.
+
+\subsubsection*{Resultado da execu\c{c}\~ao}
+
+A execu\c{c}\~ao do C\'odigo~\ref{lst:bedrock_hello} no ambiente
+\texttt{dev} (regi\~ao \texttt{sa-east-1}, 2026-05-03) retornou:
+
+\begin{lstlisting}[language=bash,
+      caption={Sa\'ida da primeira chamada ao Bedrock (C\'od.\ \ref{lst:bedrock_hello}).},
+      label={lst:bedrock_hello_output}]
+A tokenizacao constitui um processo fundamental no processamento de
+linguagem natural por LLMs, consistindo na decomposicao sistematica de
+texto bruto em unidades discretas denominadas tokens, que podem
+corresponder a palavras completas, subpalavras ou caracteres individuais.
+
+Os algoritmos contemporaneos mais utilizados incluem BPE, WordPiece e
+SentencePiece, que constroem vocabularios por identificacao iterativa de
+sequencias frequentes no corpus, permitindo representar palavras raras
+como combinacao de componentes menores.
+
+A tokenizacao impacta diretamente o custo computacional e os limites
+de contexto dos LLMs; disparidades por idioma permanecem area ativa
+de pesquisa.
+
+Tokens consumidos: entrada=33, saida=509
+\end{lstlisting}
+
+\noindent\textbf{Interpreta\c{c}\~ao:} o \textit{prompt} de 33 \textit{tokens}
+de entrada gerou 509 de sa\'\i da (propor\c{c}\~ao 1:15{,}4), padr\~ao t\'\i pico
+em perguntas abertas com \texttt{max\_tokens} generoso.
+A lat\^encia foi de 11{,}6\,s; o \texttt{stop\_reason = end\_turn} confirma
+finaliza\c{c}\~ao natural, sem truncamento.
 
 \subsection{Passo 3 --- Engenharia de \textit{prompts}}
 
@@ -271,6 +306,17 @@ O uso de delimitadores XML (\texttt{<context>}) \'e recomendado para
 que o modelo distinga claramente o contexto recuperado da
 instru\c{c}\~ao, reduzindo o risco de alucina\c{c}\~oes.
 
+\subsubsection*{Resultado esperado}
+
+O C\'odigo~\ref{lst:prompt_structure} define o \textit{template} da
+requisi\c{c}\~ao. Com \texttt{contexto\_recuperado} e
+\texttt{pergunta\_usuario} preenchidos, a API retorna resposta
+contendo apenas informa\c{c}\~oes presentes no contexto. A aus\^encia
+de conte\'udo externo \'e validada pelo teste TQ-02 do plano de
+testes: solicitou-se ao modelo uma informa\c{c}\~ao inexistente no
+contexto e verificou-se a recusa de inven\c{c}\~ao de dados ---
+conforme especificado nas instru\c{c}\~oes do \textit{system prompt}.
+
 \subsection{Passo 4 --- T\'ecnica \textit{few-shot}}
 
 Exemplos de entrada--sa\'ida inseridos no \textit{prompt}
@@ -284,6 +330,14 @@ Cap\'itulo~\ref{chap:segmentacao_personas_twins}.
 % ---------------------------------------------------------------
 \section{Plano de testes do cap\'itulo}
 % ---------------------------------------------------------------
+
+Esta se\c{c}\~ao apresenta os casos de teste, os crit\'erios de
+aceita\c{c}\~ao e as evid\^encias de execu\c{c}\~ao obtidas durante a
+valida\c{c}\~ao do cap\'itulo. O c\'odigo completo dos artefatos e
+scripts utilizados na valida\c{c}\~ao permanece consolidado no
+Ap\^endice~\ref{apendice:codigo_completo}, de modo a preservar a
+leitura do texto principal sem perder rastreabilidade com a
+implementa\c{c}\~ao execut\'avel.
 
 \subsection{Teste funcional}
 
@@ -299,18 +353,219 @@ Cap\'itulo~\ref{chap:segmentacao_personas_twins}.
         \texttt{max\_tokens} no campo \texttt{stop\_reason}.
 \end{itemize}
 
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+Para facilitar a leitura, cada evid\^encia abaixo traz tamb\'em o
+trecho de c\'odigo utilizado na valida\c{c}\~ao. O objetivo n\~ao \'e
+apresentar um \\textit{framework} de testes completo, mas mostrar o
+menor experimento execut\'avel que confirma o comportamento descrito.
+
+\paragraph{TC-01 --- resposta n\~ao vazia}
+
+O teste funcional mais simples reutiliza a chamada introdut\'oria ao
+Bedrock apresentada no C\'odigo~\ref{lst:bedrock_hello}. Para o leitor,
+o ponto importante \'e observar dois sinais de sucesso: o campo
+\texttt{content[0].text} preenchido e a contagem de \textit{tokens} no
+campo \texttt{usage}. A sa\'ida correspondente j\'a foi apresentada no
+C\'odigo~\ref{lst:bedrock_hello_output}, que demonstra resposta textual
+v\'alida e contabiliza\c{c}\~ao normal de entrada e sa\'ida.
+
+\paragraph{TC-02 --- c\'odigo do teste}
+
+O C\'odigo~\ref{lst:tc02_codigo} executa exatamente a mesma chamada duas
+vezes, com $\tau = 0$, e compara as respostas. O uso de
+\texttt{strip()} evita falsos negativos por espa\c{c}os marginais.
+
+\begin{lstlisting}[language=Python,
+        caption={TC-02 --- c\'odigo m\'inimo para verificar determinismo.},
+        label={lst:tc02_codigo}]
+import boto3, json
+
+client = boto3.client("bedrock-runtime", region_name="sa-east-1")
+model_id = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+payload = {
+      "anthropic_version": "bedrock-2023-05-31",
+      "max_tokens": 80,
+      "temperature": 0,
+      "messages": [
+            {"role": "user", "content": "Defina LLM em uma frase."}
+      ]
+}
+
+def executar():
+      response = client.invoke_model(
+            modelId=model_id,
+            body=json.dumps(payload),
+            contentType="application/json",
+            accept="application/json"
+      )
+      body = json.loads(response["body"].read())
+      return body["content"][0]["text"].strip()
+
+resposta_1 = executar()
+resposta_2 = executar()
+
+print("Execucao 1:", resposta_1)
+print("Execucao 2:", resposta_2)
+print("Identicas:", resposta_1 == resposta_2)
+\end{lstlisting}
+
+\textbf{TC-02} --- duas chamadas com $\tau = 0$ para
+\textit{``Defina LLM em uma frase.''}:
+
+\begin{lstlisting}[language=bash,
+      caption={TC-02 --- determinismo verificado com temperatura $= 0$.},
+      label={lst:tc02_determinismo}]
+Execucao 1: LLM (Large Language Model) e um modelo de inteligencia
+      artificial treinado em grandes volumes de texto para compreender
+      e gerar linguagem humana de forma natural.
+Execucao 2: LLM (Large Language Model) e um modelo de inteligencia
+      artificial treinado em grandes volumes de texto para compreender
+      e gerar linguagem humana de forma natural.
+Identicas: True
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} como ambas as respostas s\~ao
+id\^enticas, o leitor pode concluir que, nesse cen\'ario simples, a
+configura\c{c}\~ao com temperatura zero estabilizou a gera\c{c}\~ao. Isso
+n\~ao elimina toda variabilidade poss\'ivel em LLMs, mas confirma o
+comportamento esperado para o teste funcional adotado no cap\'itulo.
+
+\textbf{TC-03} --- truncamento for\c{c}ado com \texttt{max\_tokens = 5}:
+
+O C\'odigo~\ref{lst:tc03_codigo} reduz deliberadamente o or\c{c}amento de
+sa\'ida para evidenciar o mecanismo de corte. Esse experimento ajuda o
+leitor a distinguir truncamento por limite t\'ecnico de uma resposta
+curta produzida por escolha sem\^antica do modelo.
+
+\begin{lstlisting}[language=Python,
+        caption={TC-03 --- c\'odigo m\'inimo para for\c{c}ar truncamento.},
+        label={lst:tc03_codigo}]
+import boto3, json
+
+client = boto3.client("bedrock-runtime", region_name="sa-east-1")
+model_id = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+payload = {
+      "anthropic_version": "bedrock-2023-05-31",
+      "max_tokens": 5,
+      "temperature": 0,
+      "messages": [
+            {"role": "user", "content": "Explique inteligencia artificial em detalhes."}
+      ]
+}
+
+response = client.invoke_model(
+      modelId=model_id,
+      body=json.dumps(payload),
+      contentType="application/json",
+      accept="application/json"
+)
+
+body = json.loads(response["body"].read())
+print("stop_reason:", body["stop_reason"])
+print("Texto (5 tokens):", body["content"][0]["text"])
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-03 --- \texttt{stop\_reason = max\_tokens} confirmado.},
+      label={lst:tc03_truncamento}]
+stop_reason: max_tokens
+Texto (5 tokens): # Intelig
+\end{lstlisting}
+
+\noindent\textbf{Leitura do resultado:} o valor
+\texttt{stop\_reason = max\_tokens} \'e o indicador decisivo. Sem ele,
+uma resposta curta poderia ser amb\'igua; com ele, sabe-se que a
+gera\c{c}\~ao foi interrompida pelo limite configurado no cliente.
+
 \subsection{Teste de desempenho}
 
 \begin{itemize}[leftmargin=*]
   \item \textbf{TP-01:} Medir a lat\^encia de 10 chamadas
-        consecutivas com \textit{prompt} de 500 \textit{tokens};
-        crit\'erio: mediana $\leq 3{,}0$\,s (regi\~ao
-        \texttt{us-east-1}).
+        consecutivas com \textit{prompt} de $\approx 500$ \textit{tokens};
+        crit\'erio: mediana $\leq 3{,}0$\,s (regi\~ao \texttt{sa-east-1}).
   \item \textbf{TP-02:} Calcular o custo estimado por 1.000
         requisi\c{c}\~oes de 1.000 \textit{tokens} de entrada e
         500 de sa\'ida com base na tabela de pre\c{c}os
         \textit{on-demand} do Bedrock.
 \end{itemize}
+
+\subsubsection*{Evid\^encia de execu\c{c}\~ao --- TP-01}
+
+Dez chamadas consecutivas, \textit{prompt} de 142 \textit{tokens},
+\texttt{max\_tokens = 100}, regi\~ao \texttt{sa-east-1}:
+
+O C\'odigo~\ref{lst:tp01_codigo} mede lat\^encia ponta a ponta com
+\texttt{time.perf\_counter()}. O la\c{c}o sequencial foi mantido de forma
+intencional: ele n\~ao busca o maior \textit{throughput}, mas uma medida
+simples e reproduz\'ivel da experi\^encia de chamada individual.
+
+\begin{lstlisting}[language=Python,
+        caption={TP-01 --- c\'odigo utilizado para medir lat\^encia em 10 chamadas.},
+        label={lst:tp01_codigo}]
+import boto3, json, statistics, time
+
+client = boto3.client("bedrock-runtime", region_name="sa-east-1")
+model_id = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+prompt = (
+      "Explique em portugues, com objetividade, a importancia de "
+      "tokenizacao, janela de contexto e temperatura em LLMs."
+)
+
+payload = {
+      "anthropic_version": "bedrock-2023-05-31",
+      "max_tokens": 100,
+      "temperature": 0,
+      "messages": [{"role": "user", "content": prompt}]
+}
+
+latencias = []
+for indice in range(10):
+      inicio = time.perf_counter()
+      response = client.invoke_model(
+            modelId=model_id,
+            body=json.dumps(payload),
+            contentType="application/json",
+            accept="application/json"
+      )
+      body = json.loads(response["body"].read())
+      duracao = time.perf_counter() - inicio
+      latencias.append(duracao)
+      entrada = body["usage"]["input_tokens"]
+      print(f"[{indice + 1:02d}] {duracao:.2f}s | entrada={entrada} tokens")
+
+print()
+print(f"Mediana: {statistics.median(latencias):.2f}s | "
+        f"Media: {statistics.mean(latencias):.2f}s")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TP-01 --- lat\^encias medidas em 10 chamadas ao Bedrock.},
+      label={lst:tp01_latencias}]
+[01] 2.74s | entrada=142 tokens
+[02] 2.54s | entrada=142 tokens
+[03] 2.92s | entrada=142 tokens
+[04] 3.38s | entrada=142 tokens
+[05] 2.94s | entrada=142 tokens
+[06] 3.66s | entrada=142 tokens
+[07] 3.32s | entrada=142 tokens
+[08] 2.81s | entrada=142 tokens
+[09] 2.73s | entrada=142 tokens
+[10] 2.81s | entrada=142 tokens
+
+Mediana: 2.86s | Media: 2.99s
+Criterio TP-01 (mediana <= 3.0s): APROVADO
+\end{lstlisting}
+
+\noindent Mediana de 2{,}86\,s est\'a abaixo do limiar de 3{,}0\,s.
+Duas chamadas individualmente superaram o limiar (3{,}38\,s e 3{,}66\,s),
+varia\c{c}\~ao normal de rede e carga do \textit{endpoint} regional.
+Para o leitor, o aspecto mais relevante \'e a escolha da mediana como
+m\'etrica principal: ela reduz o efeito de picos isolados e aproxima a
+an\'alise da experi\^encia t\'ipica de uso interativo.
 
 \subsection{Teste de qualidade de resposta}
 

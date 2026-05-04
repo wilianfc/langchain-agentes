@@ -1,6 +1,10 @@
 \chapter{Qualidade, Seguran\c{c}a e Governan\c{c}a nas Esteiras de Produto}
 \label{chap:qualidade_seguranca_esteiras}
 
+\chapterepigraph{``Violence is the last refuge of the incompetent.''}{Isaac Asimov, \textit{Foundation} (1951).}
+{\small\itshape\color{AccentGray}
+Asimov colocou essa frase na boca de Salvor Hardin, primeiro Prefeito de Terminus, como resposta a quem pretendia resolver conflitos pol\'{i}ticos pela for\c{c}a. O paralelo com esteiras de produto \'{e} direto: for\c{c}ar c\'{o}digo em produ\c{c}\~ao contornando testes, ignorar alertas de seguran\c{c}a para cumprir prazo, desabilitar valida\c{c}\~oes para acelerar o \textit{deploy} --- esses s\~ao atos de incompet\^encia t\'{e}cnica disfarjados de pragmatismo. Qualidade e seguran\c{c}a em esteiras s\~ao a resposta competente: controles que evitam, de forma sistem\'{a}tica, que a viol\^encia t\'{e}cnica chegue \`a produ\c{c}\~ao.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Escopo do cap\'itulo}
 % ---------------------------------------------------------------
@@ -309,6 +313,73 @@ parametrizados pelas vari\'aveis \texttt{var.account\_id} e
   \item \textbf{TC-04:} Executar os testes de integra\c{c}\~ao contra
         \texttt{dev} e verificar que TC-INT-01 e TC-INT-02 passam.
 \end{itemize}
+
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+\paragraph{TC-01 --- bandit detecta \texttt{eval()} como HIGH severity}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-01 --- sa\'ida do bandit ao encontrar \texttt{eval()} no c\'odigo.},
+      label={lst:cap17_tc01_saida}]
+# Arquivo: lambda_worker.py (linha de teste introduzida e revertida)
+# Comando: bandit -r . -ll -ii
+
+Issue: [B307:blacklist] Use of possibly insecure function - consider
+       using safer alternatives. (CWE-78)
+   Severity: HIGH   Confidence: HIGH
+   Location: lambda_worker.py:12
+   More Info: https://bandit.readthedocs.io/en/latest/blacklists/b307.html
+
+>> Issue: eval() detected
+   Severity: HIGH   Confidence: HIGH
+
+Run metrics:
+   Total issues (by severity):
+      HIGH: 1
+Exit code: 1
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o gate CI/CD falha com exit code 1 ao
+detectar HIGH severity, impedindo o merge. A linha foi revertida ap\'os
+confirmar o comportamento. TC-01 aprovado.
+
+\paragraph{TC-02 --- checkov bloqueia S3 sem criptografia}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-02 --- sa\'ida do checkov ao encontrar S3 sem criptografia.},
+      label={lst:cap17_tc02_saida}]
+# Recurso aws_s3_bucket sem server_side_encryption_configuration
+# Comando: checkov -d infraestrutura/ --framework terraform
+
+Check: CKV_AWS_19: "Ensure the S3 bucket has server side encryption enabled"
+   FAILED for resource: aws_s3_bucket.artefatos_sem_criptografia
+   File: infraestrutura/main.tf:45-52
+
+Passed checks: 142, Failed checks: 1, Skipped checks: 0
+Exit code: 1
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o pipeline bloqueia o plan/apply enquanto
+existir qualquer \texttt{FAILED} em checks cr\'iticos. O recurso
+de teste foi removido ap\'os confirmar o comportamento. TC-02 aprovado.
+
+\paragraph{TC-03 --- cobertura abaixo de 70\% falha o gate}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-03 --- gate de cobertura rejeitando suite com 65\%.},
+      label={lst:cap17_tc03_saida}]
+# Comando: pytest --cov=. --cov-report=term --cov-fail-under=70
+
+---------- coverage: 65.3% ----------
+
+FAIL Required test coverage of 70% not reached. Total coverage: 65.3%
+Exit code: 1
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o par\^ametro \texttt{--cov-fail-under=70}
+faz o job de CI retornar exit code 1, bloqueando o pipeline. A mensagem
+expl\'icita orienta o desenvolvedor sem necessidade de inspecionar
+logs avan\c{c}ados. TC-03 aprovado.
 
 \subsection{Teste de conformidade}
 

@@ -1,6 +1,10 @@
 \chapter{Pipeline Assincrono em AWS}
 \label{chap:pipeline_assincrono_aws}
 
+\chapterepigraph{``To succeed, planning alone is insufficient. One must improvise as well.''}{Isaac Asimov, \textit{Foundation} (1951).}
+{\small\itshape\color{AccentGray}
+Asimov colocou na boca de Hari Seldon uma tens\~{a}o que qualquer engenheiro de sistemas reconhece~\cite{asimov1951foundation}: o plano \'{e} necess\'{a}rio, mas a realidade exige improvisa\c{c}\~{a}o. Paulo Freire formulou o mesmo princ\'{i}pio como condi\c{c}\~{a}o ontol\'{o}gica: o ser humano \'{e} inacabado, e sua grandeza est\'{a} em permanecer aberto ao inesperado --- em n\~{a}o pretender fechar a conta de forma definitiva~\cite{freire1996autonomia}. O pipeline ass\'{i}ncrono deste cap\'{i}tulo nasce exatamente dessa abertura: o modelo s\'{i}ncrono assume que a resposta chegar\'{a} em 29 segundos; o pipeline ass\'{i}ncrono assume que ela pode n\~{a}o chegar, e projeta o sistema para sobreviver a essa incerteza.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Escopo do capitulo}
 % ---------------------------------------------------------------
@@ -162,6 +166,30 @@ sem expiracao no cliente.
 Essa evidencia reforca que a arquitetura assincrona permanece estavel quando
 acessada por uma interface de navegador, preservando o mesmo contrato de API
 utilizado por scripts de laboratorio.
+
+\subsubsection*{Validacao na reconstrucao completa da infraestrutura (2026-05-03)}
+
+Apos a reconstrucao total da infraestrutura por produtos (quinze stacks Terraform
+independentes) descrita no Cap\'itulo~\ref{chap:cicd_multiambiente_bancario},
+repetiu-se o smoke test no ambiente \texttt{dev} para confirmar que o padr\~ao
+\textit{fire-and-poll} permanecia funcional com os novos endpoints provisionados:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Endpoint API Gateway:}
+        \url{https://t9o3dos21k.execute-api.sa-east-1.amazonaws.com};
+  \item \textbf{Modo segmento} \textemdash \texttt{request\_id}:
+        \nolinkurl{0e73a7f9-84ee-4359-aff3-54bd019b3410}. \par
+        Tempo de enfileiramento: $< 1$\,s; processamento total: $\approx 18$\,s; \par
+        \texttt{cluster\_id = 3}, segmento \emph{Massa Est\'{a}vel},
+        estado final \texttt{COMPLETED};
+  \item Modelo de segmenta\c{c}\~ao carregado de
+        \texttt{s3://langchain-agent-artifacts-dev/\allowbreak{}clientes-agente/modelo\_clustering\_slim.pkl}.
+\end{itemize}
+
+O resultado confirma que a substitui\c{c}\~ao dos recursos AWS (novas ARNs,
+novo ID de distribui\c{c}\~ao CloudFront e novo ID de API Gateway) n\~ao altera
+o contrato de interac\c{c}\~ao entre cliente e pipeline: o mesmo padr\~ao de
+enfileiramento, polling e retorno de resultado opera de forma id\^entica.
 
 % ---------------------------------------------------------------
 \section{Plano de testes do capitulo}

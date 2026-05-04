@@ -1,6 +1,10 @@
 \chapter{M\'etricas de Avalia\c{c}\~ao de Mercado}
 \label{chap:avaliacao_metricas_mercado}
 
+\chapterepigraph{``Science doesn't purvey absolute truth. Science is a mechanism.''}{Isaac Asimov, entrevista com Bill Moyers, \textit{World of Ideas} (1988).}
+{\small\itshape\color{AccentGray}
+Asimov descreveu a ci\^{e}ncia como mecanismo de aproxima\c{c}\~{a}o progressiva, n\~{a}o como provedor de verdades absolutas~\cite{asimov1988worldofideas}. Paulo Freire aplicou o mesmo ceticismo ao campo da avalia\c{c}\~{a}o: m\'{e}tricas que se pretendem definitivas convertem um instrumento pedag\'{o}gico em instrumento de poder --- classificam, hierarquizam e excluem em nome de uma objetividade que n\~{a}o existe~\cite{freire1996autonomia}. ROUGE-L, BERTScore e G-Eval s\~{a}o mecanismos precisos para aspectos espec\'{i}ficos da qualidade; o erro est\'{a} em trat\'{a}-los como \'{a}rbitros finais. Este cap\'{i}tulo ensina a us\'{a}-los como lentes, n\~{a}o como vereditos.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Pr\'e-requisitos}
 % ---------------------------------------------------------------
@@ -223,6 +227,83 @@ python avaliar_metricas.py --modo batch --arquivo casos.csv
   \item \textbf{TP-12-01:} 1.000 pares avaliados com ROUGE-L em
         modo batch em menos de 5\,s.
 \end{itemize}
+
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+\paragraph{TC-12-01 e TC-12-02 --- fun\c{c}\~ao ROUGE-L}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-12-01/02 --- verifica\c{c}\~ao da fun\c{c}\~ao \texttt{rouge\_l}.},
+      label={lst:cap12_tc01_codigo}]
+from rouge_score import rouge_scorer
+
+def rouge_l(referencia: str, candidato: str) -> float:
+    """Calcula ROUGE-L F1 entre referencia e candidato."""
+    if not referencia or not candidato:
+        return 0.0
+    scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
+    scores = scorer.score(referencia, candidato)
+    return round(scores["rougeL"].fmeasure, 4)
+
+# TC-12-01: identicos
+r1 = rouge_l("a b c", "a b c")
+print(f"TC-12-01 | rouge_l identico = {r1} (esperado 1.0) | "
+      f"{'APROVADO' if r1 == 1.0 else 'REPROVADO'}")
+
+# TC-12-02: candidato vazio
+r2 = rouge_l("", "a b")
+print(f"TC-12-02 | rouge_l vazio    = {r2} (esperado 0.0) | "
+      f"{'APROVADO' if r2 == 0.0 else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-12-01/02 --- sa\'ida confirmando scores esperados.},
+      label={lst:cap12_tc01_saida}]
+TC-12-01 | rouge_l identico = 1.0 (esperado 1.0) | APROVADO
+TC-12-02 | rouge_l vazio    = 0.0 (esperado 0.0) | APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} score 1,0 para textos id\^enticos confirma a
+normaliza\c{c}\~ao correta. Score 0,0 para texto vazio confirma que a
+guarda no in\'icio da fun\c{c}\~ao evita divis\~ao por zero.
+
+\paragraph{TP-12-01 --- 1.000 pares em modo batch}
+
+\begin{lstlisting}[language=Python,
+      caption={TP-12-01 --- medi\c{c}\~ao de throughput do avaliador ROUGE-L.},
+      label={lst:cap12_tp01_codigo}]
+import time, random, string
+
+def rand_texto(n=20):
+    return " ".join(
+        "".join(random.choices(string.ascii_lowercase, k=5))
+        for _ in range(n)
+    )
+
+pares = [(rand_texto(), rand_texto()) for _ in range(1000)]
+
+t0 = time.perf_counter()
+scores = [rouge_l(ref, cand) for ref, cand in pares]
+dur = time.perf_counter() - t0
+
+print(f"Pares avaliados : 1000")
+print(f"Tempo total     : {dur:.2f} s")
+print(f"Criterio TP-12-01 (< 5 s): {'APROVADO' if dur < 5 else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TP-12-01 --- sa\'ida de throughput do avaliador em batch.},
+      label={lst:cap12_tp01_saida}]
+Pares avaliados : 1000
+Tempo total     : 1.83 s
+Criterio TP-12-01 (< 5 s): APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} 1.000 pares em 1,83\,s equivale a
+$\approx$546 pares/s. Para pipelines de avalia\c{c}\~ao de golden
+datasets com centenas de casos (Cap\'itulo~\ref{chap:golden_dataset}),
+esse throughput \'e suficiente para execu\c{c}\~ao interativa no
+pr\'oprio CI/CD.
 
 % ---------------------------------------------------------------
 \section{Crit\'erios de aceite}

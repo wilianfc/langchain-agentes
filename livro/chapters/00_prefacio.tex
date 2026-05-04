@@ -1,16 +1,99 @@
 \chapter*{Pref\'acio}
 \addcontentsline{toc}{chapter}{Pref\'acio}
 
-Este livro conta uma hist\'oria. N\~ao \'e uma cole\c{c}\~ao de
-receitas isoladas: cada cap\'itulo introduz um personagem, uma tens\~ao
-ou uma virada que s\'o fazem sentido luz do que veio antes. O personagem
-central \'e um sistema de IA corporativo que nasce simples --- uma
-chamada ao LLM --- e amadurece progressivamente at\'e operar em
-produ\c{c}\~ao banc\'aria com rastreabilidade, avalia\c{c}\~ao cont\'inua
-e governan\c{c}a t\'ecnica. O leitor que acompanhar essa jornada
-cap\'itulo a cap\'itulo sair\'a capaz n\~ao apenas de reproduzir o
-c\'odigo, mas de tomar as mesmas decis\~oes de projeto --- e de
-justific\'a-las.
+\section*{Uma imagem antiga}
+
+Este livro quer come\c{c}ar como conversa, n\~ao como protocolo. Se
+funcionar, o leitor n\~ao sentir\'a que recebeu um manual fechado, mas
+que foi convidado a caminhar ao lado de quem precisou montar, errar,
+medir, corrigir e sustentar um sistema de IA em ambiente corporativo.
+N\'os escrevemos de frente para o leitor porque precisamos partilhar
+n\~ao apenas o c\'odigo, mas os crit\'erios que o tornam defens\'avel
+quando ele deixa o laborat\'orio e entra no mundo.
+
+Atr\'as dessa conversa h\'a uma imagem antiga. No mito eg\'ipcio,
+quando a vida chega ao fim, o cora\c{c}\~ao \'e colocado na balan\c{c}a
+diante de Ma'at, princ\'ipio vivo de ordem, medida e verdade. Do outro
+lado da balan\c{c}a est\'a a Pena da Verdade. Se a vida pesou mais
+do que a pena --- se o cora\c{c}\~ao foi carregado demais por injusti\c{c}a,
+fraude ou caos --- ele \'e devorado. Se passou na pesagem, a vida se
+integra \'a ordem c\'osmica, ao Ma'at que sustenta todas as coisas.
+
+Essa cena n\~ao \'e um ornamento. Ela condensar\'a todo um modo de pensar
+que atravessa este livro: a no\c{c}\~ao de que os sistemas complexos
+existem em tens\~ao permanente, e que a \'unica forma de mant\^e-los \'ia
+de realiza\c{c}\~ao de pesagens sucessivas. Custo contra valor.
+Autonomia contra controle. Velocidade contra confiabilidade. Mem\'oria
+contra auditoria. Conveni\^encia contra governan\c{c}a. Esses n\~ao s\~ao
+problemas a resolver uma \'unica vez: s\~ao tens\~oes a manter em
+equil\'ibrio permanente, sob risco de cair em Isfet --- a desordem, o
+improviso sem lastro, a opacidade que parece efici\^encia at\'e o
+primeiro incidente destruir tudo.
+
+\section*{Variações de uma mesma ideia}
+
+A ficção científica chegou a essa mesma intuição por outro caminho.
+\textit{Star Trek} oferece a imaginação de um futuro em que tecnologia e
+cooperação ampliam o horizonte humano precisamente porque os sistemas
+são continuamente testados contra um padrão ético claro. \textit{Stargate
+SG-1} retoma a arqueologia, o portal e o mito para lembrar que explorar
+o desconhecido nunca é apenas atravessar espaços: é reinterpretar
+heranças, medir constantemente se o que está sendo descoberto é
+compatível com a ordem que se quer sustentar. Asimov pensa civilizações
+em escala, sempre diante da pergunta: como um conjunto complexo de
+seres autônomos permanece coeso? \textit{Neuromancer} antecipa a textura
+nervosa de redes, interfaces e mercados onde a confiabilidade é
+continuamente testada contra ataques, fraudes e ruído. \textit{1984}
+adverte: quando você deixa de medir, quando a linguagem e a memória
+deixam de ser testadas contra a realidade, cai-se em Isfet absoluto.
+
+Há ainda uma terceira corrente, mais incômoda. Marx, Wilhelm Reich e
+Rosa Luxemburg escreveram sobre os sistemas sociais e políticos do início
+do século XX --- as fábricas, os partidos, os Estados, as estruturas de
+poder que moldavam a vida cotidiana de milhões de pessoas. O objeto
+deles não era a tecnologia no sentido contemporâneo; era a organização
+humana e suas consequências sobre quem trabalha, quem decide e quem
+suporta o custo das escolhas alheias. Mas a pergunta que atravessava toda
+essa crítica permanece intacta e, sobretudo, portátil: \textit{em
+benefício de quem?} Qual é a ordem que se está tentando sustentar, e a
+que preço, para quem?
+
+A analogia com sistemas complexos de IA não é forçada: é que essa mesma
+pergunta, que eles faziam às fábricas e aos Estados, pode --- e deve ---
+ser feita a qualquer sistema que toma decisões sobre pessoas. Um modelo
+que classifica clientes, um pipeline que filtra solicitações de crédito,
+uma plataforma que recomenda ou descarta perfis: todos esses sistemas
+passam por uma pesagem. A questão é se alguém foi designado para
+fazer essa pesagem de forma explícita, ou se ela acontece às cegas, como
+efeito colateral de uma otimização que jamais foi interrogada. Se a
+técnica não é testada contra as necessidades materiais, afetivas, sociais
+e democráticas das pessoas que ela afeta, então não estamos construindo
+um sistema responsável. Estamos construindo Isfet disfarçado de progresso.
+
+Por isso, este livro abordaremos a Inteligência Artificial não como um
+problema técnico isolado, mas como um espaço onde todas essas tensões se
+encontram: a necessidade de medir e testar continuamente; a
+responsabilidade de manter o equilíbrio; o dever de fazer isso em função
+de quem vive dentro e ao redor do sistema. As analogias não são
+ornamento. Elas delimitam o campo simbólico e político no qual um
+sistema de IA passa a operar.
+
+\section*{Uma jornada de pesagens}
+
+O personagem central deste livro é um sistema de IA corporativo. Ele
+nasce simples --- uma chamada ao LLM --- e amadurece progressivamente até
+operar em produção bancária com rastreabilidade, avaliação contínua,
+segurança e governança técnica. Essa jornada não é uma escalação linear.
+É uma série de pesagens: em cada passo, o engenheiro coloca o que foi
+construído na balança e pergunta: *será que isso suporta o peso do
+próprio julgamento?*
+
+O compromisso, desde o início, é menos com a solução pronta do que com
+o raciocínio que a torna sustentável. Se esta jornada funcionar, o
+leitor sairá capaz não apenas de reproduzir o código, mas de argumentar
+por que ele foi organizado dessa maneira --- e em que condições deveria
+ser reorganizado quando as circunstâncias mudarem. Porque elas sempre
+mudam.
 
 \section*{A hist\'oria em dois ciclos}
 

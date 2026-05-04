@@ -5,6 +5,16 @@
 \providecommand{\abntbstabout}[1]{}
 \abntbstabout{v-1.9.7 }
 
+\bibitem{asimov1978myownview}
+\abntrefinfo{Asimov}{ASIMOV}{1978}
+{ASIMOV, I. My own view. In:  HOLDSTOCK, R. (Ed.). \emph{The Encyclopedia of
+  Science Fiction}. London: Octopus Books, 1978.}
+
+\bibitem{freire1996autonomia}
+\abntrefinfo{Freire}{FREIRE}{1996}
+{FREIRE, P. \emph{{Pedagogia da Autonomia: Saberes Necess{\'a}rios {\`a}
+  Pr{\'a}tica Educativa}}. S{\~a}o Paulo: Paz e Terra, 1996.}
+
 \bibitem{wei2022chain}
 \abntrefinfo{Wei et al.}{WEI et al.}{2022}
 {WEI, J. et al. Chain-of-thought prompting elicits reasoning in large language
@@ -38,6 +48,19 @@ Dispon{\'\i}vel em: \url{https://github.com/openai/tiktoken}.}
 Acessado em: maio de 2026.
 Dispon{\'\i}vel em:
   \url{https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview}.}
+
+\bibitem{asimov1950irobot}
+\abntrefinfo{Asimov}{ASIMOV}{1950}
+{ASIMOV, I. \emph{{I, Robot}}. New York: Gnome Press, 1950.}
+
+\bibitem{gibson1984neuromancer}
+\abntrefinfo{Gibson}{GIBSON}{1984}
+{GIBSON, W. \emph{{Neuromancer}}. New York: Ace Books, 1984.}
+
+\bibitem{freire1968pedagogia}
+\abntrefinfo{Freire}{FREIRE}{1987}
+{FREIRE, P. \emph{{Pedagogia do Oprimido}}. Rio de Janeiro: Paz e Terra, 1987.
+  1\textordfeminine\ edi{\c{c}}{\~a}o: 1968.}
 
 \bibitem{langgraph2024}
 \abntrefinfo{{LangChain AI}}{{LangChain AI}}{2024}
@@ -86,6 +109,10 @@ Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2303.11366}.}
   \url{https://modelcontextprotocol.io/}.
 Acessado em: maio de 2026.}
 
+\bibitem{asimov1983rovingmind}
+\abntrefinfo{Asimov}{ASIMOV}{1983}
+{ASIMOV, I. \emph{{The Roving Mind}}. Buffalo, NY: Prometheus Books, 1983.}
+
 \bibitem{faiss2017}
 \abntrefinfo{Johnson, Douze e J{\'e}gou}{JOHNSON; DOUZE; J{\'E}GOU}{2021}
 {JOHNSON, J.; DOUZE, M.; J{\'E}GOU, H. Billion-scale similarity search with
@@ -100,10 +127,33 @@ Acessado em: maio de 2026.}
   2020.
 Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2005.11401}.}
 
+\bibitem{asimov1951foundation}
+\abntrefinfo{Asimov}{ASIMOV}{1951}
+{ASIMOV, I. \emph{{Foundation}}. New York: Gnome Press, 1951.}
+
+\bibitem{asimov1982foundationsedge}
+\abntrefinfo{Asimov}{ASIMOV}{1982}
+{ASIMOV, I. \emph{{Foundation's Edge}}. New York: Doubleday, 1982.}
+
+\bibitem{asimov1989secrets}
+\abntrefinfo{Asimov}{ASIMOV}{1990}
+{ASIMOV, I. \emph{{The Secrets of the Universe}}. New York: Truman Talley
+  Books, 1990. Publicado originalmente em 1989.}
+
+\bibitem{asimov1988worldofideas}
+\abntrefinfo{Asimov}{ASIMOV}{1988}
+{ASIMOV, I. \emph{Entrevista concedida ao programa \textit{World of Ideas}}.
+  1988. PBS / Public Affairs Television.
+Entrevistador: Bill Moyers.}
+
 \bibitem{llm_judge2023}
 \abntrefinfo{Zheng et al.}{ZHENG et al.}{2023}
 {ZHENG, L. et al. Judging {LLM-as-a-Judge} with {MT-Bench} and chatbot arena.
 \emph{arXiv preprint arXiv:2306.05685}, 2023.
 Dispon{\'\i}vel em: \url{https://arxiv.org/abs/2306.05685}.}
+
+\bibitem{asimov1972godsthemselves}
+\abntrefinfo{Asimov}{ASIMOV}{1972}
+{ASIMOV, I. \emph{{The Gods Themselves}}. New York: Doubleday, 1972.}
 
 \end{thebibliography}

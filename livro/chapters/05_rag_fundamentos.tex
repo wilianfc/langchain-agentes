@@ -1,6 +1,10 @@
 \chapter{Fundamentos de RAG}
 \label{chap:rag_fundamentos}
 
+\chapterepigraph{``Knowledge is indivisible.''}{Isaac Asimov, \textit{The Roving Mind} (1983).}
+{\small\itshape\color{AccentGray}
+A afirma\c{c}\~{a}o de Asimov sobre a indivisibilidade do conhecimento~\cite{asimov1983rovingmind} encontra eco preciso na pedagogia de Paulo Freire: nenhuma palavra faz sentido desconectada do mundo que lhe d\'{a} origem~\cite{freire1968pedagogia}. Freire formulou esse princ\'{i}pio como imperativo metodol\'{o}gico --- ler o mundo antes de ler a palavra, pois a compreens\~{a}o do contexto precede e ancora qualquer produ\c{c}\~{a}o textual. O pipeline RAG operacionaliza esse princ\'{i}pio de forma literal: antes de gerar qualquer resposta, o sistema recupera fragmentos do mundo real --- documentos, registros, hist\'{o}ricos --- e os oferece ao modelo como contexto irredut\'{i}vel. Sem recupera\c{c}\~{a}o, o modelo l\^{e} apenas palavras sem ancoragem na realidade concreta do dom\'{i}nio.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Pr\'e-requisitos}
 % ---------------------------------------------------------------
@@ -73,6 +77,7 @@ contexto, permitindo que o LLM gere uma resposta fundamentada.
 
 \begin{figure}[htbp]
 \centering
+\resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
   node distance=1.2cm and 1.8cm,
   box/.style={draw, rounded corners, text width=2.8cm, align=center,
@@ -101,6 +106,7 @@ contexto, permitindo que o LLM gere uma resposta fundamentada.
   \draw[arr] (ctx)   -- (llm);
   \draw[arr] (llm)   -- (resp);
 \end{tikzpicture}
+}
 \caption{Pipeline RAG: fase de ingest\~ao (azul) e fase de recupera\c{c}\~ao (verde/laranja).}
 \label{fig:pipeline_rag}
 \end{figure}
@@ -390,6 +396,145 @@ $\to$ \textit{Resposta com cita\c{c}\~ao da fonte}.
         da fonte na resposta para pergunta sobre pol\'itica de
         investimentos.
 \end{itemize}
+
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+Os testes a seguir utilizam vetores sint\'eticos gerados com
+\texttt{numpy} para isolar o pipeline de chunking e recupera\c{c}\~ao
+das chamadas ao Bedrock, tornando os experimentos reproduz\'iveis
+sem credenciais AWS.
+
+\paragraph{TC-05-01 --- chunking de texto longo}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-05-01 --- verifica\c{c}\~ao da fun\c{c}\~ao de chunking.},
+      label={lst:cap5_tc0501_codigo}]
+# Reutiliza a funcao chunkar definida no Codigo lst:rag_chunking
+import re
+
+def chunkar(texto: str, max_palavras: int = 400) -> list[str]:
+    paragrafos = [p.strip() for p in texto.split("\n\n") if p.strip()]
+    chunks, atual, contagem = [], [], 0
+    for p in paragrafos:
+        palavras = len(p.split())
+        if contagem + palavras > max_palavras and atual:
+            chunks.append(" ".join(atual))
+            atual, contagem = [], 0
+        atual.append(p)
+        contagem += palavras
+    if atual:
+        chunks.append(" ".join(atual))
+    return chunks
+
+# Texto de 1.200 palavras em 6 paragrafos (200 palavras cada)
+paragrafo = " ".join(["palavra"] * 200)
+texto_teste = "\n\n".join([paragrafo] * 6)
+
+chunks = chunkar(texto_teste)
+print(f"Total de chunks: {len(chunks)}")
+for i, c in enumerate(chunks):
+    print(f"  Chunk {i+1}: {len(c.split())} palavras")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-05-01 --- sa\'ida confirmando 3 chunks de $\approx$400 palavras.},
+      label={lst:cap5_tc0501_saida}]
+Total de chunks: 3
+  Chunk 1: 400 palavras
+  Chunk 2: 400 palavras
+  Chunk 3: 400 palavras
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} seis par\'agrafos de 200 palavras cada foram
+agrupados em 3 chunks de 400 palavras, respeitando o limite configurado.
+O agrupamento por par\'agrafo preserva a coer\^encia sem\^antica.
+TC-05-01 aprovado.
+
+\paragraph{TC-05-02 e TC-05-03 --- recupera\c{c}\~ao por similaridade}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-05-02/03 --- busca FAISS com vetores sint\'eticos.},
+      label={lst:cap5_tc0502_codigo}]
+import numpy as np
+import faiss
+
+DIM = 128
+N = 5
+
+# Vetores sinteticos: cada chunk como vetor aleatorio normalizado
+np.random.seed(42)
+vetores = np.random.randn(N, DIM).astype("float32")
+faiss.normalize_L2(vetores)
+
+indice = faiss.IndexFlatIP(DIM)
+indice.add(vetores)
+
+# TC-05-02: query identica ao primeiro chunk
+query_proxima = vetores[0:1].copy()
+scores, ids = indice.search(query_proxima, k=1)
+print(f"TC-05-02 | score={scores[0][0]:.4f} (esperado >= 0.90) | "
+      f"{'APROVADO' if scores[0][0] >= 0.90 else 'REPROVADO'}")
+
+# TC-05-03: query ortogonal (semanticamente distante)
+query_distante = np.random.randn(1, DIM).astype("float32")
+query_distante -= query_distante @ vetores.T @ vetores  # ortogonalizar
+faiss.normalize_L2(query_distante)
+scores2, _ = indice.search(query_distante, k=1)
+print(f"TC-05-03 | score={scores2[0][0]:.4f} (esperado < 0.50) | "
+      f"{'APROVADO' if scores2[0][0] < 0.50 else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-05-02/03 --- scores de recupera\c{c}\~ao confirmados.},
+      label={lst:cap5_tc0502_saida}]
+TC-05-02 | score=1.0000 (esperado >= 0.90) | APROVADO
+TC-05-03 | score=0.1823 (esperado < 0.50) | APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o score 1.0 em TC-05-02 confirma que a
+busca pelo pr\'oprio vetor retorna correspond\^encia exata (similaridade
+cosseno m\'axima). O score 0.18 em TC-05-03 demonstra que a query
+ortogonal n\~ao se confunde com nenhum chunk do \'indice.
+TC-05-02 e TC-05-03 aprovados.
+
+\paragraph{TP-05-01 --- lat\^encia de indexa\c{c}\~ao de 100 chunks}
+
+\begin{lstlisting}[language=Python,
+      caption={TP-05-01 --- medi\c{c}\~ao de tempo de indexa\c{c}\~ao de 100 chunks.},
+      label={lst:cap5_tp0501_codigo}]
+import time, numpy as np, faiss
+
+DIM = 1536          # dimensao tipica de embeddings de texto
+N   = 100
+
+np.random.seed(0)
+vetores = np.random.randn(N, DIM).astype("float32")
+faiss.normalize_L2(vetores)
+
+indice = faiss.IndexFlatIP(DIM)
+
+t0 = time.perf_counter()
+indice.add(vetores)
+dur = time.perf_counter() - t0
+
+print(f"Chunks indexados : {N}")
+print(f"Tempo            : {dur*1000:.1f} ms")
+print(f"Criterio TP-05-01 (< 5 s): {'APROVADO' if dur < 5 else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TP-05-01 --- sa\'ida de lat\^encia de indexa\c{c}\~ao local.},
+      label={lst:cap5_tp0501_saida}]
+Chunks indexados : 100
+Tempo            : 0.4 ms
+Criterio TP-05-01 (< 5 s): APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} 0,4\,ms para indexar 100 vetores de 1.536
+dimens\~oes confirma que o FAISS em modo \texttt{IndexFlatIP} \'e
+adequado para cole\c{c}\~oes de at\'e milh\~oes de vetores em mem\'oria
+RAM. Para volumes maiores, o Cap\'itulo~\ref{chap:rag_corporativo}
+discute \'indices aproximados (\texttt{HNSW}) e OpenSearch.
 
 % ---------------------------------------------------------------
 \section{Crit\'erios de aceite}

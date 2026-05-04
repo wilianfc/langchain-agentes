@@ -1,6 +1,10 @@
 \chapter{Frontend Web com CloudFront para Operação da API e Ingestão RAG}
 \label{chap:frontend_cloudfront_console}
 
+\chapterepigraph{``It seems to me, Golan, that the advance of civilization is nothing but an exercise in the limiting of privacy.''}{Isaac Asimov, \textit{Foundation's Edge} (1982).}
+{\small\itshape\color{AccentGray}
+A provoca\c{c}\~{a}o de Asimov sobre privacidade e civiliza\c{c}\~{a}o~\cite{asimov1982foundationsedge} aponta para uma tens\~{a}o que Paulo Freire nomeou de forma direta: tecnologia que serve apenas a quem j\'{a} sabe oper\'{a}-la n\~{a}o democratiza --- reproduz as desigualdades existentes~\cite{freire1996autonomia}. Para Freire, ampliar o acesso ao conhecimento \'{e} um ato pol\'{i}tico antes de ser um ato t\'{e}cnico. A interface \textit{web} deste cap\'{i}tulo existe por essa raz\~{a}o: retirar a plataforma do dom\'{i}nio exclusivo de quem domina APIs e coloc\'{a}-la ao alcance de operadores sem expertise de infraestrutura \'{e} uma decis\~{a}o de projeto com consequ\^{e}ncias \'{e}ticas. Privacidade e acesso n\~{a}o s\~{a}o opostos --- s\~{a}o tens\~{o}es que o sistema deve gerir de forma expl\'{i}cita e audit\'{a}vel.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Escopo do cap\'itulo}
 % ---------------------------------------------------------------
@@ -224,42 +228,62 @@ de rastreabilidade, auditoria e controle de seguran\c{c}a.
 
 \subsection{Teste de valida\c{c}\~ao em produ\c{c}\~ao (AWS)}
 
-Foi executado um smoke test completo no ambiente publicado, com os
-seguintes endere\c{c}os:
+Foram realizados dois ciclos de smoke test sobre o ambiente publicado.
+O primeiro, em 02/05/2026, utilizou os recursos da implanta\c{c}\~ao
+inicial:
 
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Frontend CloudFront:}
-        \texttt{https://djxkmivr2akfz.cloudfront.net};
-  \item \textbf{API Gateway:}
-        \texttt{https://3vqrahlmyg.execute-api.sa-east-1.amazonaws.com}.
+  \item \textbf{Frontend CloudFront (deploy inicial):}
+        \url{https://djxkmivr2akfz.cloudfront.net};
+  \item \textbf{API Gateway (deploy inicial):}
+        \url{https://3vqrahlmyg.execute-api.sa-east-1.amazonaws.com}.
 \end{itemize}
 
-Os resultados observados foram:
+Resultados do primeiro ciclo:
 
 \begin{itemize}[leftmargin=*]
   \item \textbf{TVP-01 (ingest\~ao entrevista):}
         \texttt{ok=true}, \texttt{chunks\_indexados=1};
   \item \textbf{TVP-02 (consulta persona):}
-        \texttt{request\_id}: \nolinkurl{ddbc5210-63fc-47bc-a274-283e60be84bc}. \par
-        Estado final \texttt{COMPLETED};
+        {\small\nolinkurl{ddbc5210-63fc-47bc-a274-283e60be84bc}},
+        estado final: \texttt{COMPLETED};
   \item \textbf{TVP-03 (consulta twin):}
-        \texttt{request\_id}: \nolinkurl{e5e348e7-d266-4ae9-9f26-eb0e659a56a7}. \par
-        Estado final \texttt{COMPLETED};
-  \item \textbf{TVP-04 (corre\c{c}\~ao de exibi\c{c}\~ao da resposta):}
-        Identificado e corrigido defeito no \texttt{app.js} em que o campo
-        \texttt{data.result} era exibido diretamente como texto, resultando
-        em \texttt{[object Object]}. A corre\c{c}\~ao extrai
-        \texttt{result.resposta} ap\'os \textit{parse} JSON, exibindo o
-        texto leg\'ivel do agente no painel \textbf{Resposta} e os metadados
-        (\texttt{cliente\_id}, \texttt{cluster\_id}, \texttt{confiabilidade})
-        no painel \textbf{Status}. Implantado em produ\c{c}\~ao via
-        \texttt{aws s3 sync} e invalida\c{c}\~ao do cache CloudFront em
-        02/05/2026.
+        {\small\nolinkurl{e5e348e7-d266-4ae9-9f26-eb0e659a56a7}},
+        estado final: \texttt{COMPLETED};
+  \item \textbf{TVP-04 (corre\c{c}\~ao de exibi\c{c}\~ao):}
+        Corrigido defeito no \texttt{app.js} em que \texttt{data.result}
+        era exibido como \texttt{[object Object]}; corre\c{c}\~ao extrai
+        \texttt{result.resposta} ap\'os \textit{parse} JSON.
+        Implantado via \texttt{aws s3 sync} e invalida\c{c}\~ao do cache
+        CloudFront em 02/05/2026.
 \end{itemize}
 
-Com isso, verifica-se a opera\c{c}\~ao ponta a ponta da interface web em
-produ\c{c}\~ao, incluindo ingest\~ao RAG e consulta ass\'incrona com
-\textit{polling} at\'e a conclus\~ao.
+O segundo ciclo, em 03/05/2026, foi realizado ap\'os a reconstrucao
+completa da infraestrutura por quinze stacks Terraform independentes,
+provisionando novos recursos AWS:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Frontend CloudFront (reconstrucao):}
+        \url{https://d2ezjxnkbue8v9.cloudfront.net}
+        (distribution \texttt{E2FD7BTQ2OD6J5});
+  \item \textbf{API Gateway (reconstrucao):}
+        \url{https://t9o3dos21k.execute-api.sa-east-1.amazonaws.com};
+  \item \textbf{Frontend sincronizado:} quatro arquivos
+        (\texttt{index.html}, \texttt{styles.css}, \texttt{app.js},
+        \texttt{config.js}) enviados via \texttt{aws s3 sync} com
+        \texttt{apiUrl} atualizado; invalida\c{c}\~ao criada
+        (\texttt{I2D0S2FNYK6ITL5KDEVZ9YIHRR});
+  \item \textbf{TVP-05 (smoke test modo segmento --- 03/05/2026):}
+        {\small\nolinkurl{0e73a7f9-84ee-4359-aff3-54bd019b3410}},
+        estado final: \texttt{COMPLETED} em $\approx 18$\,s;
+        \texttt{cluster\_id = 3}, segmento \emph{Massa Est\'avel},
+        resposta gerada pelo Bedrock exibida corretamente no painel
+        \textbf{Resposta}.
+\end{itemize}
+
+Com isso, verifica-se que a interface web opera corretamente em produ\c{c}\~ao
+ap\'os dois ciclos de deploy distintos, mantendo o contrato de API e o
+padr\~ao visual inalterados.
 
 \subsection{Teste de seguran\c{c}a}
 

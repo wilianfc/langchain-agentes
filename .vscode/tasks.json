@@ -4,13 +4,11 @@
     {
       "label": "MemPalace: Salvar Decisão de Projeto",
       "type": "shell",
-      "command": "python",
+      "command": "pwsh",
       "args": [
-        "-m", "mempalace", "add-drawer",
-        "--wing", "langchain_project",
-        "--room", "decisoes_tecnicas",
-        "--content", "${input:decision_content}",
-        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+        "-NoProfile",
+        "-File", "${workspaceFolder}/project-memory.ps1",
+        "save"
       ],
       "group": "build",
       "presentation": {
@@ -26,11 +24,11 @@
     {
       "label": "MemPalace: Buscar Decisões Anteriores",
       "type": "shell",
-      "command": "python",
+      "command": "pwsh",
       "args": [
-        "-m", "mempalace", "search",
-        "${input:search_query}",
-        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+        "-NoProfile",
+        "-File", "${workspaceFolder}/project-memory.ps1",
+        "search"
       ],
       "group": "build",
       "presentation": {
@@ -46,10 +44,11 @@
     {
       "label": "MemPalace: Carregar Contexto do Projeto",
       "type": "shell",
-      "command": "python",
+      "command": "pwsh",
       "args": [
-        "-m", "mempalace", "wake-up",
-        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+        "-NoProfile",
+        "-File", "${workspaceFolder}/project-memory.ps1",
+        "context"
       ],
       "group": "build",
       "presentation": {
@@ -65,13 +64,11 @@
     {
       "label": "MemPalace: Salvar Problema Resolvido",
       "type": "shell",
-      "command": "python",
+      "command": "pwsh",
       "args": [
-        "-m", "mempalace", "add-drawer",
-        "--wing", "langchain_project",
-        "--room", "problemas_resolvidos",
-        "--content", "${input:problem_solution}",
-        "--palace", "${env:USERPROFILE}/.mempalace/vscode_decisions"
+        "-NoProfile",
+        "-File", "${workspaceFolder}/project-memory.ps1",
+        "problem"
       ],
       "group": "build",
       "presentation": {

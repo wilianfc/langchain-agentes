@@ -20,11 +20,19 @@ function Save-Decision {
     $content = "$timestamp - $decision"
     
     try {
-        $result = python -m mempalace add-drawer --wing $PROJECT_NAME --room $category --content $content --palace $PALACE_PATH 2>&1
+        $notesDir = Join-Path (Get-Location) "decisoes_projeto"
+        if (-not (Test-Path $notesDir)) {
+            New-Item -ItemType Directory -Path $notesDir -Force | Out-Null
+        }
+
+        $notesFile = Join-Path $notesDir "_mempalace_registro.md"
+        Add-Content -Path $notesFile -Value "- [$timestamp] [DECISAO][$category] $decision"
+
+        $result = python -m mempalace mine $notesDir --palace $PALACE_PATH 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Decisão salva!" -ForegroundColor Green
+            Write-Host "✅ Decisão salva e indexada no MemPalace!" -ForegroundColor Green
         } else {
-            Write-Host "⚠️ Erro: $result" -ForegroundColor Red
+            Write-Host "⚠️ Erro ao indexar no MemPalace: $result" -ForegroundColor Red
         }
     } catch {
         Write-Host "⚠️ MemPalace não está instalado. Execute: pip install mempalace" -ForegroundColor Yellow
@@ -67,11 +75,19 @@ function Save-Problem {
     $content = "$timestamp - PROBLEMA: $problem | SOLUÇÃO: $solution"
     
     try {
-        $result = python -m mempalace add-drawer --wing $PROJECT_NAME --room "problemas_resolvidos" --content $content --palace $PALACE_PATH 2>&1
+        $notesDir = Join-Path (Get-Location) "decisoes_projeto"
+        if (-not (Test-Path $notesDir)) {
+            New-Item -ItemType Directory -Path $notesDir -Force | Out-Null
+        }
+
+        $notesFile = Join-Path $notesDir "_mempalace_registro.md"
+        Add-Content -Path $notesFile -Value "- [$timestamp] [PROBLEMA][problemas_resolvidos] $problem | SOLUCAO: $solution"
+
+        $result = python -m mempalace mine $notesDir --palace $PALACE_PATH 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Problema e solução salvos!" -ForegroundColor Green
+            Write-Host "✅ Problema e solução salvos e indexados!" -ForegroundColor Green
         } else {
-            Write-Host "⚠️ Erro: $result" -ForegroundColor Red
+            Write-Host "⚠️ Erro ao indexar no MemPalace: $result" -ForegroundColor Red
         }
     } catch {
         Write-Host "⚠️ MemPalace não está instalado. Execute: pip install mempalace" -ForegroundColor Yellow

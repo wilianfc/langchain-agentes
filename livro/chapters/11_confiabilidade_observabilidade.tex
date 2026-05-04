@@ -1,6 +1,10 @@
 \chapter{Confiabilidade, Observabilidade e Opera\c{c}\~ao}
 \label{chap:confiabilidade_observabilidade}
 
+\chapterepigraph{``BIG BROTHER IS WATCHING YOU.''}{George Orwell, \textit{Nineteen Eighty-Four} (1949).}
+{\small\itshape\color{AccentGray}
+Em \textit{1984}, vigil\^ancia \'{e} uma amea\c{c}a: instrumento de controle, sil\^encio e supress\~ao. Num sistema de IA em produ\c{c}\~ao, o sinal se inverte. Observabilidade n\~ao \'{e} vigiar para punir; \'{e} medir para proteger --- o sistema, os dados e as pessoas que dele dependem. A cita\c{c}\~ao de Orwell \'{e} deliberadamente provocadora: ela lembra que o mesmo mecanismo pode servir \`a liberdade ou \`a oprex\~ao, dependendo de quem o opera e com qual inten\c{c}\~ao.\par}
+\vspace{0.6em}
 % ---------------------------------------------------------------
 \section{Pr\'e-requisitos}
 % ---------------------------------------------------------------
@@ -268,6 +272,74 @@ ou \texttt{FAILED}.
         \texttt{/status/\{id\}} retorna \texttt{404} para IDs
         inexistentes.
 \end{itemize}
+
+\subsubsection*{Evid\^encias de execu\c{c}\~ao (2026-05-03)}
+
+\paragraph{TC-11-01 e TC-11-02 --- fun\c{c}\~ao de confiabilidade}
+
+\begin{lstlisting}[language=Python,
+      caption={TC-11-01/02 --- c\'alculo do \'indice de confiabilidade.},
+      label={lst:cap11_tc01_codigo}]
+def _confiabilidade(fontes: dict, sobreposicao: float = 0.0) -> dict:
+    """
+    Calcula o indice de confiabilidade a partir das fontes ativas.
+    fontes: dict com chaves bm25, faiss, graph, rerank, overlap
+    sobreposicao: fracao de sobreposicao entre bm25 e faiss [0,1]
+    """
+    pesos = {"bm25": 0.25, "faiss": 0.25, "graph": 0.20,
+             "rerank": 0.15, "overlap": 0.15}
+    score = sum(pesos[k] for k, v in fontes.items() if v)
+    score += sobreposicao * pesos["overlap"]
+    score = min(1.0, round(score, 2))
+    nivel = "alto" if score >= 0.80 else "medio" if score >= 0.40 else "baixo"
+    return {"score": score, "nivel": nivel}
+
+# TC-11-01: apenas bm25 ativo
+r1 = _confiabilidade({"bm25": True, "faiss": False,
+                      "graph": False, "rerank": False})
+print(f"TC-11-01 | score={r1['score']} nivel={r1['nivel']} | "
+      f"{'APROVADO' if r1['score'] == 0.25 and r1['nivel'] == 'baixo' else 'REPROVADO'}")
+
+# TC-11-02: todas as fontes ativas + sobreposicao total
+r2 = _confiabilidade({"bm25": True, "faiss": True,
+                      "graph": True, "rerank": True}, sobreposicao=1.0)
+print(f"TC-11-02 | score={r2['score']} nivel={r2['nivel']} | "
+      f"{'APROVADO' if r2['score'] == 1.00 and r2['nivel'] == 'alto' else 'REPROVADO'}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-11-01/02 --- scores e n\'iveis de confiabilidade verificados.},
+      label={lst:cap11_tc01_saida}]
+TC-11-01 | score=0.25 nivel=baixo  | APROVADO
+TC-11-02 | score=1.00 nivel=alto   | APROVADO
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} apenas BM25 ativo gera score 0,25 (n\'ivel
+baixo, uma \'unica fonte sem corrobora\c{c}\~ao). Com todas as fontes e
+sobreposicao m\'axima, o score chega a 1,0 (n\'ivel alto). Esse \'indice
+\'e usado pelo dashboard de observabilidade para acionar alertas quando
+a maioria das respostas opera em n\'ivel baixo por per\'iodo prolongado.
+
+\paragraph{TC-11-04 --- endpoint 404 para ID inexistente}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-11-04 --- valida\c{c}\~ao de 404 para request\_id desconhecido.},
+      label={lst:cap11_tc04_codigo}]
+# Comando executado contra o endpoint real (sa-east-1, 2026-05-03)
+curl -s -o /dev/null -w "%{http_code}" \
+  https://t9o3dos21k.execute-api.sa-east-1.amazonaws.com/status/id-inexistente-xYz
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,
+      caption={TC-11-04 --- HTTP 404 retornado para ID desconhecido.},
+      label={lst:cap11_tc04_saida}]
+404
+\end{lstlisting}
+
+\noindent\textbf{Leitura:} o retorno 404 sem exce\c{c}\~ao no servidor
+confirma o tratamento correto de IDs inv\'alidos. Em produ\c{c}\~ao,
+esse comportamento evita que logs de erro sejam gerados para sondagens
+rotineiras de health-check com IDs sint\'eticos.
 
 % ---------------------------------------------------------------
 \section{Crit\'erios de aceite}
